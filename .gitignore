@@ -1,0 +1,36 @@
+# Build outputs
+build/
+dist/
+out/
+
+# Local Python environments and caches
+.venv/
+.venv-*/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Downloaded model weights and generated assets
+models/
+outputs/
+*.gguf
+*.ckpt
+*.safetensors
+*.pth
+*.glb
+*.obj
+*.mtl
+*.png.log.txt
+*.json
+!.codebase-memory/artifact.json
+
+# Vendored upstream checkouts downloaded by setup scripts
+third_party/
+
+# Editor and OS noise
+.vs/
+.vscode/
+*.user
+*.suo
+Thumbs.db
+Desktop.ini
