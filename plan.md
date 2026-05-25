@@ -367,3 +367,21 @@ Add `hy3d dit-forward` with `--latent-bin` and `--context-bin` raw little-endian
 - [x] **Step 5: Verify**
 
 Run CTest, real GGUF dry-run, real block-count 0 final-layer smoke, real block-count 1 scaffold smoke, and raw F32 input smoke.
+
+### Task 13: Reusable Image-to-3D Script
+
+**Files:**
+- Create: `scripts/generate_3d_model.ps1`
+- Modify: `README.md`
+
+- [x] **Step 1: Add a reusable Windows PowerShell wrapper**
+
+Wrap the verified `hy3d.exe generate --backend python` path with image/output/model/device/quality/seed parameters, automatic release build, UTF-8 environment setup, and optional Hunyuan3D-Paint texture generation.
+
+- [x] **Step 2: Validate with a real local image**
+
+Generate `outputs\frieren-character-smoke.glb` from `C:\Users\steven\Downloads\ChatGPT Image 2026年5月25日 下午11_20_07.png` through CUDA PyTorch.
+
+- [x] **Step 3: Document reuse**
+
+Add a README section with the reusable command, options, and output sidecars.

@@ -35,6 +35,33 @@ For a mostly offline package from an already prepared checkout:
 .\scripts\make_release.ps1 -IncludeModels -IncludeVenv -Zip
 ```
 
+## Reusable Image-to-3D Script
+
+Use `scripts\generate_3d_model.ps1` to turn any local image into a GLB through the verified Windows CUDA Python backend:
+
+```powershell
+.\scripts\generate_3d_model.ps1 `
+  -ImagePath "C:\Users\steven\Downloads\ChatGPT Image 2026年5月25日 下午11_20_07.png" `
+  -OutputPath .\outputs\frieren-character-smoke.glb `
+  -Quality smoke `
+  -Seed 42
+```
+
+Useful options:
+
+- `-Quality smoke|draft|normal`: maps to the backend generation presets.
+- `-Steps N`: overrides the quality preset step count.
+- `-Texture`: runs Hunyuan3D-Paint after shape generation and writes `*-textured.glb`.
+- `-NoRembg`: keeps the original image background.
+- `-LowVram`: forwards the upstream low-VRAM flag, but see the note below before using it on this checkout.
+- `-DryRun`: validates paths and command wiring without producing the GLB.
+- `-NoBuild`: fails if `build\Release\hy3d.exe` is missing instead of building it.
+
+Each run writes sidecars next to the output model:
+
+- `output.glb.log.txt`
+- `output.glb.json`
+
 ## Download Hunyuan3D Models
 
 Use the current Hugging Face CLI, `hf`. The older `huggingface-cli` command is deprecated.
