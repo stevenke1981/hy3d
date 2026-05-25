@@ -43,6 +43,7 @@ std::string help_text() {
         << "  hy3d --inspect <file.gguf>\n"
         << "  hy3d tensor --model <file.gguf> --name <tensor> [--bytes N]\n"
         << "  hy3d dit-block --model <file.gguf> [--block N] [--block-count N] [--tokens N] [--context-tokens N] [--context-dim N] [--timestep N] [--heads N] [--head-dim N] [--no-cross-attn] [--no-timestep] [--no-mlp] [--dry-run]\n"
+        << "  hy3d dit-forward --model <file.gguf> [--block N] [--block-count N] [--latent-tokens N] [--latent-dim N] [--context-tokens N] [--context-dim N] [--latent-bin f32.bin] [--context-bin f32.bin] [--timestep N] [--dry-run]\n"
         << "  hy3d generate --backend python --image <input.png> --out <output.glb> [--model-path <path>] [--quality smoke|draft|normal] [--steps N]\n"
         << "  hy3d texture --backend python --mesh <input.glb> --image <input.png> --out <textured.glb> [--model-path <path>] [--resolution 512] [--max-views 6]\n"
         << "\n"
@@ -50,6 +51,7 @@ std::string help_text() {
         << "  inspect     Inspect GGUF header and tensor metadata.\n"
         << "  tensor      Read a named tensor's metadata and leading bytes.\n"
         << "  dit-block   Load and run one mapped Hunyuan3D DiT block from GGUF.\n"
+        << "  dit-forward Run native DiT x_embedder -> blocks -> final_layer scaffold.\n"
         << "  generate    Generate through a selected backend.\n"
         << "  texture     Generate PBR texture through the Python paint backend.\n"
         << "\n"
@@ -266,6 +268,155 @@ Result<CliOptions> parse_args(const std::vector<std::string>& args) {
         if (options.tokens <= 0 || options.context_tokens <= 0 || options.context_dim <= 0 ||
             options.heads <= 0 || options.head_dim <= 0) {
             return Result<CliOptions>::failure("--tokens, --context-tokens, --context-dim, --heads, and --head-dim must be positive");
+        }
+        return Result<CliOptions>::success(options);
+    }
+
+    if (args[1] == "dit-forward") {
+        options.command = CommandKind::DitForward;
+        options.block_index = 0;
+        options.block_count = 1;
+        options.tokens = 1;
+        options.latent_dim = 64;
+        options.context_tokens = 1;
+        options.context_dim = 1024;
+        for (std::size_t i = 2; i < args.size(); ++i) {
+            const auto& arg = args[i];
+            if (arg == "--model") {
+                auto value = require_value(args, i, "--model");
+                if (!value.ok()) {
+                    return Result<CliOptions>::failure(value.error());
+                }
+                options.model_path = value.value();
+                ++i;
+            } else if (arg == "--block") {
+                auto value = require_value(args, i, "--block");
+                if (!value.ok()) {
+                    return Result<CliOptions>::failure(value.error());
+                }
+                try {
+                    options.block_index = std::stoi(value.value());
+                } catch (...) {
+                    return Result<CliOptions>::failure("--block must be an integer");
+                }
+                ++i;
+            } else if (arg == "--block-count") {
+                auto value = require_value(args, i, "--block-count");
+                if (!value.ok()) {
+                    return Result<CliOptions>::failure(value.error());
+                }
+                try {
+                    options.block_count = std::stoi(value.value());
+                } catch (...) {
+                    return Result<CliOptions>::failure("--block-count must be an integer");
+                }
+                ++i;
+            } else if (arg == "--latent-tokens") {
+                auto value = require_value(args, i, "--latent-tokens");
+                if (!value.ok()) {
+                    return Result<CliOptions>::failure(value.error());
+                }
+                try {
+                    options.tokens = std::stoi(value.value());
+                } catch (...) {
+                    return Result<CliOptions>::failure("--latent-tokens must be an integer");
+                }
+                ++i;
+            } else if (arg == "--latent-dim") {
+                auto value = require_value(args, i, "--latent-dim");
+                if (!value.ok()) {
+                    return Result<CliOptions>::failure(value.error());
+                }
+                try {
+                    options.latent_dim = std::stoi(value.value());
+                } catch (...) {
+                    return Result<CliOptions>::failure("--latent-dim must be an integer");
+                }
+                ++i;
+            } else if (arg == "--context-tokens") {
+                auto value = require_value(args, i, "--context-tokens");
+                if (!value.ok()) {
+                    return Result<CliOptions>::failure(value.error());
+                }
+                try {
+                    options.context_tokens = std::stoi(value.value());
+                } catch (...) {
+                    return Result<CliOptions>::failure("--context-tokens must be an integer");
+                }
+                ++i;
+            } else if (arg == "--context-dim") {
+                auto value = require_value(args, i, "--context-dim");
+                if (!value.ok()) {
+                    return Result<CliOptions>::failure(value.error());
+                }
+                try {
+                    options.context_dim = std::stoi(value.value());
+                } catch (...) {
+                    return Result<CliOptions>::failure("--context-dim must be an integer");
+                }
+                ++i;
+            } else if (arg == "--latent-bin") {
+                auto value = require_value(args, i, "--latent-bin");
+                if (!value.ok()) {
+                    return Result<CliOptions>::failure(value.error());
+                }
+                options.latent_path = value.value();
+                ++i;
+            } else if (arg == "--context-bin") {
+                auto value = require_value(args, i, "--context-bin");
+                if (!value.ok()) {
+                    return Result<CliOptions>::failure(value.error());
+                }
+                options.context_path = value.value();
+                ++i;
+            } else if (arg == "--heads") {
+                auto value = require_value(args, i, "--heads");
+                if (!value.ok()) {
+                    return Result<CliOptions>::failure(value.error());
+                }
+                try {
+                    options.heads = std::stoi(value.value());
+                } catch (...) {
+                    return Result<CliOptions>::failure("--heads must be an integer");
+                }
+                ++i;
+            } else if (arg == "--head-dim") {
+                auto value = require_value(args, i, "--head-dim");
+                if (!value.ok()) {
+                    return Result<CliOptions>::failure(value.error());
+                }
+                try {
+                    options.head_dim = std::stoi(value.value());
+                } catch (...) {
+                    return Result<CliOptions>::failure("--head-dim must be an integer");
+                }
+                ++i;
+            } else if (arg == "--timestep") {
+                auto value = require_value(args, i, "--timestep");
+                if (!value.ok()) {
+                    return Result<CliOptions>::failure(value.error());
+                }
+                try {
+                    options.timestep = std::stof(value.value());
+                } catch (...) {
+                    return Result<CliOptions>::failure("--timestep must be a number");
+                }
+                ++i;
+            } else if (arg == "--dry-run") {
+                options.dry_run = true;
+            } else {
+                return Result<CliOptions>::failure("unknown dit-forward option: " + arg);
+            }
+        }
+        if (options.model_path.empty()) {
+            return Result<CliOptions>::failure("dit-forward requires --model <file.gguf>");
+        }
+        if (options.block_index < 0 || options.block_count < 0) {
+            return Result<CliOptions>::failure("--block and --block-count must be non-negative");
+        }
+        if (options.tokens <= 0 || options.latent_dim <= 0 || options.context_tokens <= 0 ||
+            options.context_dim <= 0 || options.heads <= 0 || options.head_dim <= 0) {
+            return Result<CliOptions>::failure("dit-forward dimensions must be positive");
         }
         return Result<CliOptions>::success(options);
     }

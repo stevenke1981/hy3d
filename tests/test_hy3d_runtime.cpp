@@ -194,5 +194,26 @@ int main() {
     assert(chain_out.ok());
     assert(chain_out.value().size() == 2);
 
+    hy3d::HunyuanDitModel forward;
+    forward.add_tensor(f32_tensor("x_embedder.weight", {2, 2}, {1.0f, 0.0f, 0.0f, 1.0f}));
+    forward.add_tensor(f32_tensor("x_embedder.bias", {2}, {0.0f, 0.0f}));
+    forward.add_tensor(f32_tensor("final_layer.linear.weight", {2, 2}, {1.0f, 0.0f, 0.0f, 1.0f}));
+    forward.add_tensor(f32_tensor("final_layer.linear.bias", {2}, {0.0f, 0.0f}));
+    const auto final_out = forward.run_dit_forward_scaffold(0, 0, {1.0f, -1.0f}, 1, {}, 0, 1.0f, 1, 2);
+    assert(final_out.ok());
+    assert(final_out.value().size() == 2);
+    require_near(final_out.value()[0], 0.999995f, "forward scaffold final dim0");
+    require_near(final_out.value()[1], -0.999995f, "forward scaffold final dim1");
+
+    hy3d::HunyuanDitModel pool;
+    pool.add_tensor(f32_tensor("pooler.q_proj.weight", {2, 2}, {1.0f, 0.0f, 0.0f, 1.0f}));
+    pool.add_tensor(f32_tensor("pooler.k_proj.weight", {2, 2}, {1.0f, 0.0f, 0.0f, 1.0f}));
+    pool.add_tensor(f32_tensor("pooler.v_proj.weight", {2, 2}, {1.0f, 0.0f, 0.0f, 1.0f}));
+    pool.add_tensor(f32_tensor("pooler.c_proj.weight", {2, 2}, {1.0f, 0.0f, 0.0f, 1.0f}));
+    pool.add_tensor(f32_tensor("pooler.positional_embedding", {3, 2}, {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}));
+    const auto pooled = pool.pool_context_conditioning({1.0f, 0.0f, 0.0f, 1.0f}, 2, 1, 2);
+    assert(pooled.ok());
+    assert(pooled.value().size() == 2);
+
     return 0;
 }

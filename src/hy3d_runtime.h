@@ -99,7 +99,28 @@ public:
         std::size_t tokens,
         std::size_t top_k = 2) const;
 
+    Result<std::vector<float>> pool_context_conditioning(
+        const std::vector<float>& context,
+        std::size_t context_tokens,
+        std::size_t pool_heads,
+        std::size_t output_dim) const;
+
     Result<std::vector<float>> project_timestep_conditioning(float timestep, std::size_t width) const;
+
+    Result<std::vector<float>> apply_final_layer(
+        const std::vector<float>& hidden,
+        std::size_t tokens) const;
+
+    Result<std::vector<float>> run_dit_forward_scaffold(
+        std::uint32_t first_block,
+        std::uint32_t block_count,
+        const std::vector<float>& latents,
+        std::size_t latent_tokens,
+        const std::vector<float>& context,
+        std::size_t context_tokens,
+        float timestep,
+        std::size_t heads,
+        std::size_t head_dim) const;
 
     Result<std::string> plan_forward(
         const std::vector<std::uint64_t>& latent_shape,

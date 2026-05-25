@@ -129,6 +129,22 @@ By default this smoke path now loads one or more DiT blocks, attn1 q/k RMSNorm, 
 
 On the local converted `hy3d-shape-f16.gguf`, blocks 0-1 load 52 tensors and run through the native multi-block path. Block 18 loads and runs the MoE path with `--no-cross-attn --no-timestep`.
 
+Run the fuller native DiT scaffold:
+
+```powershell
+.\build\Release\hy3d.exe dit-forward `
+  --model .\models\hy3d-shape-f16.gguf `
+  --block-count 1 `
+  --latent-tokens 1 `
+  --latent-dim 64 `
+  --context-tokens 1 `
+  --context-dim 1024 `
+  --heads 16 `
+  --head-dim 128
+```
+
+`dit-forward` loads `x_embedder`, optional `pooler/extra_embedder`, the selected DiT blocks, and `final_layer`. It accepts raw little-endian F32 input files through `--latent-bin` and `--context-bin`; when omitted, it uses zero-filled smoke tensors.
+
 ## Native Runtime Status
 
 Implemented:
@@ -153,6 +169,10 @@ Implemented:
 - `HunyuanDitModel::run_dit_blocks_conditioned()` for sequential multi-block smoke forward with skip projection support.
 - `HunyuanDitModel::run_moe_block()` for simplified inference-time top-k MoE routing using `moe.gate`, routed experts, and shared experts.
 - Top-level `t_embedder` projection for timestep conditioning token smoke tests.
+- `x_embedder` latent projection for raw latent tokens.
+- Optional `pooler`/`extra_embedder` context pooling path. The local Hunyuan3D-2.1 shape config has `use_attention_pooling: false`, so missing pooler tensors are treated as optional.
+- `final_layer` projection that drops the conditioning token and emits latent-channel outputs.
+- `hy3d dit-forward` scaffold for `x_embedder -> timestep/context conditioning -> blocks -> final_layer`.
 - Real GGUF tensor-name mapping for official Hunyuan3D names such as `blocks.0.attn1.to_q.weight`, `blocks.0.attn1.out_proj.weight`, and `blocks.0.mlp.fc1.weight`.
 - Selective GGUF block tensor loading through `load_hunyuan_dit_block_from_gguf()`.
 - `hy3d dit-block` CLI command that loads a real block from GGUF and runs the current native DiT block primitive.
@@ -176,6 +196,7 @@ Not implemented yet:
 .\build\Release\hy3d.exe dit-block --model .\models\hy3d-shape-f16.gguf --block 0 --block-count 2 --tokens 1 --heads 16 --head-dim 128
 .\build\Release\hy3d.exe dit-block --model .\models\hy3d-shape-f16.gguf --block 0 --tokens 1 --heads 16 --head-dim 128 --no-cross-attn --no-timestep --no-mlp
 .\build\Release\hy3d.exe dit-block --model .\models\hy3d-shape-f16.gguf --block 18 --tokens 1 --heads 16 --head-dim 128 --no-cross-attn --no-timestep
+.\build\Release\hy3d.exe dit-forward --model .\models\hy3d-shape-f16.gguf --block-count 1 --latent-tokens 1 --latent-dim 64 --context-tokens 1 --context-dim 1024 --heads 16 --head-dim 128
 ```
 
 Python backend bridge, verified on this machine with RTX 3070 Ti:

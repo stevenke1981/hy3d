@@ -14,6 +14,7 @@ enum class CommandKind {
     Generate,
     Texture,
     DitBlock,
+    DitForward,
 };
 
 struct CliOptions {
@@ -26,6 +27,8 @@ struct CliOptions {
     std::string model_path;
     std::string tensor_name;
     std::string output_path;
+    std::string latent_path;
+    std::string context_path;
     std::uint64_t max_bytes = 64;
     int steps = 30;
     int seed = 42;
@@ -33,6 +36,7 @@ struct CliOptions {
     int block_count = 1;
     int max_views = 6;
     int tokens = 1;
+    int latent_dim = 64;
     int context_tokens = 1;
     int context_dim = 1024;
     int heads = 16;

@@ -22,6 +22,7 @@ The first implementation must provide:
 - `hy3d.exe inspect --model <file.gguf>`
 - `hy3d.exe --inspect <file.gguf>` as a convenience alias
 - `hy3d.exe dit-block --model <file.gguf> [--block N] [--block-count N] [--tokens N] [--context-tokens N] [--context-dim N] [--timestep N] [--heads N] [--head-dim N] [--no-cross-attn] [--no-timestep] [--no-mlp] [--dry-run]`
+- `hy3d.exe dit-forward --model <file.gguf> [--block N] [--block-count N] [--latent-tokens N] [--latent-dim N] [--context-tokens N] [--context-dim N] [--latent-bin f32.bin] [--context-bin f32.bin] [--timestep N] [--dry-run]`
 - `hy3d.exe generate --backend python --image <input.png> --out <output.glb> [--model-path <path>] [--low-vram]`
 - Clear Windows-friendly error messages.
 - CMake build and CTest smoke tests.
@@ -105,15 +106,29 @@ Expected behavior:
 - runs the current CPU `run_dit_blocks_conditioned()` primitive over `--block-count`
 - prints loaded tensor count, output value count, and an L1 checksum
 
+### Native DiT Forward Scaffold
+
+```powershell
+hy3d.exe dit-forward --model models\hy3d-shape-f16.gguf --block-count 1 --latent-tokens 1 --latent-dim 64 --context-tokens 1 --context-dim 1024
+```
+
+Expected behavior:
+
+- loads `x_embedder`, selected `blocks.N.*`, optional `pooler/extra_embedder`, and `final_layer`
+- accepts raw little-endian F32 latent/context files when `--latent-bin` or `--context-bin` is provided
+- projects latents into hidden size, prepends timestep/context conditioning, runs selected blocks, applies `final_layer`, and prints output size/checksum
+- treats missing pooler tensors as optional for shape configs with `use_attention_pooling: false`
+
 ## Future Native GGUF Inference Phases
 
-1. Complete all-block DiT execution with real latent/context inputs, attention pooling, and final projection.
-2. Implement native image preprocessing and optional ONNX image encoder bridge.
-3. Run the diffusion denoising loop with the scheduler.
-4. Decode VAE latents into density fields and meshes.
-5. Add CPU Q8 correctness tests.
-6. Add CUDA backend validation.
-7. Add quantized Q4_K/Q5_K model support.
+1. Feed real image encoder context and scheduler latents into `dit-forward`.
+2. Complete all-block DiT execution with production-sized token counts and final projection.
+3. Implement native image preprocessing and optional ONNX image encoder bridge.
+4. Run the diffusion denoising loop with the scheduler.
+5. Decode VAE latents into density fields and meshes.
+6. Add CPU Q8 correctness tests.
+7. Add CUDA backend validation.
+8. Add quantized Q4_K/Q5_K model support.
 
 ## Non-Goals
 
@@ -128,4 +143,4 @@ The Windows CUDA release is produced by `scripts/make_release.ps1`. The default 
 
 ## Native Runtime Direction
 
-The native C++ runtime now includes tensor loading, CPU linear/self-attention/cross-attention math, head-wise RMS q/k normalization, timestep embedding projection, layer norm, GELU, real GGUF block tensor-name mapping, a selective block/range loader, a sequential multi-block DiT primitive, simplified MoE inference routing, an Euler scheduler step, and a density-grid mesh decoder primitive. Remaining native work is to feed real latent/context inputs through all blocks, implement attention pooling/final projection, run the denoising loop, decode VAE latents into density grids, and write final GLB output.
+The native C++ runtime now includes tensor loading, CPU linear/self-attention/cross-attention math, head-wise RMS q/k normalization, timestep embedding projection, optional attention pooling, layer norm, GELU, real GGUF block tensor-name mapping, a selective block/range/forward loader, a sequential multi-block DiT primitive, simplified MoE inference routing, x-embedding, final-layer projection, an Euler scheduler step, and a density-grid mesh decoder primitive. Remaining native work is to feed real image encoder context and scheduler latents through production-sized all-block execution, run the denoising loop, decode VAE latents into density grids, and write final GLB output.

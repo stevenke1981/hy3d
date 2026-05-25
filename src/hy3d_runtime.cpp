@@ -654,6 +654,192 @@ Result<std::vector<float>> HunyuanDitModel::project_timestep_conditioning(float 
     return linear_projection(activated, *fc2, find_tensor("t_embedder.mlp.2.bias"));
 }
 
+Result<std::vector<float>> HunyuanDitModel::pool_context_conditioning(
+    const std::vector<float>& context,
+    std::size_t context_tokens,
+    std::size_t pool_heads,
+    std::size_t output_dim) const {
+    if (context.empty()) {
+        return Result<std::vector<float>>::success(std::vector<float>(output_dim, 0.0f));
+    }
+    if (context_tokens == 0 || context.size() % context_tokens != 0) {
+        return Result<std::vector<float>>::failure("context size must be divisible by context tokens");
+    }
+    const auto context_dim = context.size() / context_tokens;
+    const auto* q_proj = find_tensor("pooler.q_proj.weight");
+    const auto* k_proj = find_tensor("pooler.k_proj.weight");
+    const auto* v_proj = find_tensor("pooler.v_proj.weight");
+    const auto* c_proj = find_tensor("pooler.c_proj.weight");
+    if (q_proj == nullptr || k_proj == nullptr || v_proj == nullptr || c_proj == nullptr) {
+        return Result<std::vector<float>>::success(std::vector<float>(output_dim, 0.0f));
+    }
+    if (pool_heads == 0 || context_dim % pool_heads != 0) {
+        return Result<std::vector<float>>::failure("pool context dimension must be divisible by pool heads");
+    }
+
+    std::vector<float> sequence;
+    sequence.reserve((context_tokens + 1) * context_dim);
+    std::vector<float> mean(context_dim, 0.0f);
+    for (std::size_t token = 0; token < context_tokens; ++token) {
+        for (std::size_t dim = 0; dim < context_dim; ++dim) {
+            mean[dim] += context[token * context_dim + dim];
+        }
+    }
+    for (auto& value : mean) {
+        value /= static_cast<float>(context_tokens);
+    }
+    sequence.insert(sequence.end(), mean.begin(), mean.end());
+    sequence.insert(sequence.end(), context.begin(), context.end());
+
+    const auto* pos = find_tensor("pooler.positional_embedding");
+    if (pos != nullptr) {
+        const auto pos_values = tensor_to_f32(*pos);
+        if (!pos_values.ok()) {
+            return Result<std::vector<float>>::failure(pos_values.error());
+        }
+        if (pos_values.value().size() == sequence.size()) {
+            for (std::size_t i = 0; i < sequence.size(); ++i) {
+                sequence[i] += pos_values.value()[i];
+            }
+        }
+    }
+
+    const auto query = linear_projection(mean, *q_proj, find_tensor("pooler.q_proj.bias"));
+    if (!query.ok()) {
+        return Result<std::vector<float>>::failure(query.error());
+    }
+    const auto key = linear_projection_batch(sequence, context_tokens + 1, *k_proj, find_tensor("pooler.k_proj.bias"));
+    if (!key.ok()) {
+        return Result<std::vector<float>>::failure(key.error());
+    }
+    const auto value = linear_projection_batch(sequence, context_tokens + 1, *v_proj, find_tensor("pooler.v_proj.bias"));
+    if (!value.ok()) {
+        return Result<std::vector<float>>::failure(value.error());
+    }
+    const auto attended = scaled_dot_product_attention(
+        query.value(),
+        key.value(),
+        value.value(),
+        1,
+        context_tokens + 1,
+        pool_heads,
+        context_dim / pool_heads);
+    if (!attended.ok()) {
+        return Result<std::vector<float>>::failure(attended.error());
+    }
+    auto pooled = linear_projection(attended.value(), *c_proj, find_tensor("pooler.c_proj.bias"));
+    if (!pooled.ok()) {
+        return Result<std::vector<float>>::failure(pooled.error());
+    }
+
+    const auto* extra1 = find_tensor("extra_embedder.0.weight");
+    const auto* extra2 = find_tensor("extra_embedder.2.weight");
+    if (extra1 != nullptr && extra2 != nullptr) {
+        const auto hidden = linear_projection(pooled.value(), *extra1, find_tensor("extra_embedder.0.bias"));
+        if (!hidden.ok()) {
+            return Result<std::vector<float>>::failure(hidden.error());
+        }
+        const auto activated = silu(hidden.value());
+        pooled = linear_projection(activated, *extra2, find_tensor("extra_embedder.2.bias"));
+        if (!pooled.ok()) {
+            return Result<std::vector<float>>::failure(pooled.error());
+        }
+    }
+
+    if (pooled.value().size() != output_dim) {
+        return Result<std::vector<float>>::failure("pooled context output width does not match requested output dim");
+    }
+    return pooled;
+}
+
+Result<std::vector<float>> HunyuanDitModel::apply_final_layer(
+    const std::vector<float>& hidden,
+    std::size_t tokens) const {
+    if (tokens <= 1 || hidden.empty() || hidden.size() % tokens != 0) {
+        return Result<std::vector<float>>::failure("final layer hidden state must include conditioning and latent tokens");
+    }
+    const auto* weight = find_tensor("final_layer.linear.weight");
+    if (weight == nullptr) {
+        return Result<std::vector<float>>::failure("tensor not found: final_layer.linear.weight");
+    }
+    const auto normalized = layer_norm_batch(
+        hidden,
+        tokens,
+        find_tensor("final_layer.norm_final.weight"),
+        find_tensor("final_layer.norm_final.bias"));
+    if (!normalized.ok()) {
+        return Result<std::vector<float>>::failure(normalized.error());
+    }
+
+    const auto features = hidden.size() / tokens;
+    std::vector<float> latent_tokens;
+    latent_tokens.reserve((tokens - 1) * features);
+    latent_tokens.insert(
+        latent_tokens.end(),
+        normalized.value().begin() + static_cast<std::ptrdiff_t>(features),
+        normalized.value().end());
+    return linear_projection_batch(latent_tokens, tokens - 1, *weight, find_tensor("final_layer.linear.bias"));
+}
+
+Result<std::vector<float>> HunyuanDitModel::run_dit_forward_scaffold(
+    std::uint32_t first_block,
+    std::uint32_t block_count,
+    const std::vector<float>& latents,
+    std::size_t latent_tokens,
+    const std::vector<float>& context,
+    std::size_t context_tokens,
+    float timestep,
+    std::size_t heads,
+    std::size_t head_dim) const {
+    const auto* x_weight = find_tensor("x_embedder.weight");
+    if (x_weight == nullptr) {
+        return Result<std::vector<float>>::failure("tensor not found: x_embedder.weight");
+    }
+    const auto embedded = linear_projection_batch(latents, latent_tokens, *x_weight, find_tensor("x_embedder.bias"));
+    if (!embedded.ok()) {
+        return Result<std::vector<float>>::failure(embedded.error());
+    }
+    const auto hidden_width = heads * head_dim;
+    if (embedded.value().size() != latent_tokens * hidden_width) {
+        return Result<std::vector<float>>::failure("x_embedder output width does not match heads * head_dim");
+    }
+
+    auto conditioning = project_timestep_conditioning(timestep, hidden_width);
+    if (!conditioning.ok()) {
+        return Result<std::vector<float>>::failure(conditioning.error());
+    }
+    const auto pooled = pool_context_conditioning(context, context_tokens, 8, hidden_width);
+    if (!pooled.ok()) {
+        return Result<std::vector<float>>::failure(pooled.error());
+    }
+    for (std::size_t i = 0; i < conditioning.value().size(); ++i) {
+        conditioning.value()[i] += pooled.value()[i];
+    }
+
+    std::vector<float> hidden;
+    hidden.reserve(conditioning.value().size() + embedded.value().size());
+    hidden.insert(hidden.end(), conditioning.value().begin(), conditioning.value().end());
+    hidden.insert(hidden.end(), embedded.value().begin(), embedded.value().end());
+
+    const auto total_tokens = latent_tokens + 1;
+    if (block_count > 0) {
+        auto block_out = run_dit_blocks_conditioned(
+            first_block,
+            block_count,
+            hidden,
+            total_tokens,
+            context,
+            context_tokens,
+            heads,
+            head_dim);
+        if (!block_out.ok()) {
+            return Result<std::vector<float>>::failure(block_out.error());
+        }
+        hidden = std::move(block_out.value());
+    }
+    return apply_final_layer(hidden, total_tokens);
+}
+
 Result<std::string> HunyuanDitModel::plan_forward(
     const std::vector<std::uint64_t>& latent_shape,
     const std::vector<std::uint64_t>& condition_shape) const {

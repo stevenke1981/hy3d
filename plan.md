@@ -334,3 +334,36 @@ Implement simplified inference-time top-k MoE routing over `moe.gate`, routed ex
 - [x] **Step 5: Verify**
 
 Run CTest, real GGUF block-count smoke, and real block 18 MoE smoke.
+
+### Task 12: DiT Forward Scaffold
+
+**Files:**
+- Modify: `src/hy3d_runtime.*`
+- Modify: `src/hy3d_model_loader.*`
+- Modify: `src/hy3d_cli.*`
+- Modify: `src/main.cpp`
+- Modify: `tests/test_hy3d_runtime.cpp`
+- Modify: `tests/test_hy3d_model_loader.cpp`
+- Modify: `tests/test_cli.cpp`
+- Modify: `README.md`
+- Modify: `spec.md`
+
+- [x] **Step 1: Add forward-level tensor loading**
+
+Load `x_embedder`, `final_layer`, optional `pooler/extra_embedder`, and selected DiT block tensors.
+
+- [x] **Step 2: Add attention pooling scaffold**
+
+Implement optional context pooling compatible with official `AttentionPool` tensor names. Treat missing pooler tensors as optional because the local shape config has `use_attention_pooling: false`.
+
+- [x] **Step 3: Add final layer projection**
+
+Apply `final_layer.norm_final`, drop the prepended conditioning token, and project back to latent channels through `final_layer.linear`.
+
+- [x] **Step 4: Add raw latent/context input CLI**
+
+Add `hy3d dit-forward` with `--latent-bin` and `--context-bin` raw little-endian F32 inputs, falling back to zero smoke tensors when omitted.
+
+- [x] **Step 5: Verify**
+
+Run CTest, real GGUF dry-run, real block-count 0 final-layer smoke, real block-count 1 scaffold smoke, and raw F32 input smoke.

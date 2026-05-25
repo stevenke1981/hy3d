@@ -132,6 +132,25 @@ int main() {
         require(parsed.value().dry_run, "dit-block dry run");
     }
 
+    {
+        const std::vector<std::string> args = {
+            "hy3d", "dit-forward", "--model", "model.gguf", "--block-count", "2",
+            "--latent-tokens", "4", "--latent-dim", "64", "--context-tokens", "3", "--context-dim", "1024",
+            "--latent-bin", "latent.f32", "--context-bin", "context.f32",
+            "--heads", "16", "--head-dim", "128", "--dry-run"};
+        const auto parsed = hy3d::parse_args(args);
+        require(parsed.ok(), "dit-forward should parse");
+        require(parsed.value().command == hy3d::CommandKind::DitForward, "dit-forward command kind");
+        require(parsed.value().model_path == "model.gguf", "dit-forward model path");
+        require(parsed.value().block_count == 2, "dit-forward block count");
+        require(parsed.value().tokens == 4, "dit-forward latent tokens");
+        require(parsed.value().latent_dim == 64, "dit-forward latent dim");
+        require(parsed.value().context_tokens == 3, "dit-forward context tokens");
+        require(parsed.value().context_dim == 1024, "dit-forward context dim");
+        require(parsed.value().latent_path == "latent.f32", "dit-forward latent path");
+        require(parsed.value().context_path == "context.f32", "dit-forward context path");
+        require(parsed.value().dry_run, "dit-forward dry run");
+    }
 
     {
         const std::vector<std::string> args = {"hy3d", "inspect"};

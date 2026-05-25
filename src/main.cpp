@@ -5,10 +5,35 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <string>
 #include <vector>
+
+namespace {
+
+hy3d::Result<std::vector<float>> read_f32_file(const std::string& path, std::size_t expected_values) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) {
+        return hy3d::Result<std::vector<float>>::failure("failed to open f32 input file: " + path);
+    }
+    in.seekg(0, std::ios::end);
+    const auto size = static_cast<std::size_t>(in.tellg());
+    in.seekg(0, std::ios::beg);
+    if (size != expected_values * sizeof(float)) {
+        return hy3d::Result<std::vector<float>>::failure("f32 input byte size mismatch: " + path);
+    }
+    std::vector<float> values(expected_values, 0.0f);
+    in.read(reinterpret_cast<char*>(values.data()), static_cast<std::streamsize>(size));
+    if (!in) {
+        return hy3d::Result<std::vector<float>>::failure("failed to read f32 input file: " + path);
+    }
+    return hy3d::Result<std::vector<float>>::success(std::move(values));
+}
+
+} // namespace
 
 int main(int argc, char** argv) {
     std::vector<std::string> args;
@@ -159,6 +184,75 @@ int main(int argc, char** argv) {
             return 1;
         }
         std::cout << "block_tokens: " << block_tokens << "\n";
+        double checksum = 0.0;
+        for (const auto value : output.value()) {
+            checksum += std::fabs(static_cast<double>(value));
+        }
+        std::cout << "output_values: " << output.value().size() << "\n";
+        std::cout << "l1_checksum: " << checksum << "\n";
+        return 0;
+    }
+
+    if (options.command == hy3d::CommandKind::DitForward) {
+        const auto model = hy3d::load_hunyuan_dit_forward_from_gguf(
+            options.model_path,
+            static_cast<std::uint32_t>(options.block_index),
+            static_cast<std::uint32_t>(options.block_count),
+            true,
+            true,
+            true);
+        if (!model.ok()) {
+            std::cerr << "error: " << model.error() << "\n";
+            return 1;
+        }
+
+        std::cout << "dit_forward: blocks." << options.block_index << "\n";
+        std::cout << "block_count: " << options.block_count << "\n";
+        std::cout << "loaded_tensors: " << model.value().tensor_count() << "\n";
+        std::cout << "latent_tokens: " << options.tokens << "\n";
+        std::cout << "latent_dim: " << options.latent_dim << "\n";
+        std::cout << "context_tokens: " << options.context_tokens << "\n";
+        std::cout << "context_dim: " << options.context_dim << "\n";
+        if (options.dry_run) {
+            std::cout << "dry_run: ok\n";
+            return 0;
+        }
+
+        const auto latent_values = static_cast<std::size_t>(options.tokens) * static_cast<std::size_t>(options.latent_dim);
+        const auto context_values = static_cast<std::size_t>(options.context_tokens) * static_cast<std::size_t>(options.context_dim);
+        std::vector<float> latents(latent_values, 0.0f);
+        std::vector<float> context(context_values, 0.0f);
+        if (!options.latent_path.empty()) {
+            const auto loaded = read_f32_file(options.latent_path, latent_values);
+            if (!loaded.ok()) {
+                std::cerr << "error: " << loaded.error() << "\n";
+                return 1;
+            }
+            latents = loaded.value();
+        }
+        if (!options.context_path.empty()) {
+            const auto loaded = read_f32_file(options.context_path, context_values);
+            if (!loaded.ok()) {
+                std::cerr << "error: " << loaded.error() << "\n";
+                return 1;
+            }
+            context = loaded.value();
+        }
+
+        const auto output = model.value().run_dit_forward_scaffold(
+            static_cast<std::uint32_t>(options.block_index),
+            static_cast<std::uint32_t>(options.block_count),
+            latents,
+            static_cast<std::size_t>(options.tokens),
+            context,
+            static_cast<std::size_t>(options.context_tokens),
+            options.timestep,
+            static_cast<std::size_t>(options.heads),
+            static_cast<std::size_t>(options.head_dim));
+        if (!output.ok()) {
+            std::cerr << "error: " << output.error() << "\n";
+            return 1;
+        }
         double checksum = 0.0;
         for (const auto value : output.value()) {
             checksum += std::fabs(static_cast<double>(value));

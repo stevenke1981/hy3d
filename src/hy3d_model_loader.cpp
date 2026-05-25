@@ -6,6 +6,52 @@
 #include <utility>
 
 namespace hy3d {
+namespace {
+
+bool is_optional_tensor_name(const std::string& name) {
+    return name.find(".bias") != std::string::npos || name.find(".norm") != std::string::npos ||
+           name.find("_norm") != std::string::npos || name.find(".mlp.") != std::string::npos ||
+           name.find(".moe.") != std::string::npos || name.find(".skip_") != std::string::npos ||
+           name.find("pooler.") != std::string::npos || name.find("extra_embedder.") != std::string::npos ||
+           name.find("t_embedder.") != std::string::npos;
+}
+
+Result<HunyuanDitModel> load_named_tensors_from_gguf(const std::string& path, const std::vector<std::string>& names) {
+    const auto info = inspect_gguf(path);
+    if (!info.ok()) {
+        return Result<HunyuanDitModel>::failure(info.error());
+    }
+
+    HunyuanDitModel model;
+    for (const auto& name : names) {
+        const auto tensor_info = std::find_if(
+            info.value().tensor_infos.begin(),
+            info.value().tensor_infos.end(),
+            [&](const GgufTensorInfo& tensor) { return tensor.name == name; });
+        if (tensor_info == info.value().tensor_infos.end()) {
+            if (is_optional_tensor_name(name)) {
+                continue;
+            }
+            return Result<HunyuanDitModel>::failure("required block tensor not found: " + name);
+        }
+
+        const auto bytes = read_gguf_tensor_data(path, info.value(), name);
+        if (!bytes.ok()) {
+            return Result<HunyuanDitModel>::failure(bytes.error());
+        }
+
+        RuntimeTensor runtime_tensor;
+        runtime_tensor.name = tensor_info->name;
+        runtime_tensor.type = tensor_info->type;
+        runtime_tensor.dimensions = tensor_info->dimensions;
+        runtime_tensor.bytes = bytes.value();
+        model.add_tensor(std::move(runtime_tensor));
+    }
+
+    return Result<HunyuanDitModel>::success(std::move(model));
+}
+
+} // namespace
 
 std::vector<std::string> hunyuan_dit_block_tensor_names(
     std::uint32_t block_index,
@@ -89,47 +135,51 @@ std::vector<std::string> hunyuan_dit_block_range_tensor_names(
     return names;
 }
 
+std::vector<std::string> hunyuan_dit_forward_tensor_names(
+    std::uint32_t first_block,
+    std::uint32_t block_count,
+    bool include_mlp,
+    bool include_cross_attention,
+    bool include_timestep) {
+    auto names = hunyuan_dit_block_range_tensor_names(
+        first_block,
+        block_count,
+        include_mlp,
+        include_cross_attention,
+        include_timestep);
+    const std::vector<std::string> forward_names = {
+        "x_embedder.weight",
+        "x_embedder.bias",
+        "final_layer.norm_final.weight",
+        "final_layer.norm_final.bias",
+        "final_layer.linear.weight",
+        "final_layer.linear.bias",
+        "pooler.positional_embedding",
+        "pooler.q_proj.weight",
+        "pooler.q_proj.bias",
+        "pooler.k_proj.weight",
+        "pooler.k_proj.bias",
+        "pooler.v_proj.weight",
+        "pooler.v_proj.bias",
+        "pooler.c_proj.weight",
+        "pooler.c_proj.bias",
+        "extra_embedder.0.weight",
+        "extra_embedder.0.bias",
+        "extra_embedder.2.weight",
+        "extra_embedder.2.bias",
+    };
+    names.insert(names.end(), forward_names.begin(), forward_names.end());
+    return names;
+}
+
 Result<HunyuanDitModel> load_hunyuan_dit_block_from_gguf(
     const std::string& path,
     std::uint32_t block_index,
     bool include_mlp,
     bool include_cross_attention,
     bool include_timestep) {
-    const auto info = inspect_gguf(path);
-    if (!info.ok()) {
-        return Result<HunyuanDitModel>::failure(info.error());
-    }
-
-    HunyuanDitModel model;
     const auto names = hunyuan_dit_block_tensor_names(block_index, include_mlp, include_cross_attention, include_timestep);
-    for (const auto& name : names) {
-        const auto tensor_info = std::find_if(
-            info.value().tensor_infos.begin(),
-            info.value().tensor_infos.end(),
-            [&](const GgufTensorInfo& tensor) { return tensor.name == name; });
-        if (tensor_info == info.value().tensor_infos.end()) {
-            if (name.find(".bias") != std::string::npos || name.find(".norm") != std::string::npos ||
-                name.find("_norm") != std::string::npos || name.find(".mlp.") != std::string::npos ||
-                name.find(".moe.") != std::string::npos || name.find(".skip_") != std::string::npos) {
-                continue;
-            }
-            return Result<HunyuanDitModel>::failure("required block tensor not found: " + name);
-        }
-
-        const auto bytes = read_gguf_tensor_data(path, info.value(), name);
-        if (!bytes.ok()) {
-            return Result<HunyuanDitModel>::failure(bytes.error());
-        }
-
-        RuntimeTensor runtime_tensor;
-        runtime_tensor.name = tensor_info->name;
-        runtime_tensor.type = tensor_info->type;
-        runtime_tensor.dimensions = tensor_info->dimensions;
-        runtime_tensor.bytes = bytes.value();
-        model.add_tensor(std::move(runtime_tensor));
-    }
-
-    return Result<HunyuanDitModel>::success(std::move(model));
+    return load_named_tensors_from_gguf(path, names);
 }
 
 Result<HunyuanDitModel> load_hunyuan_dit_blocks_from_gguf(
@@ -139,46 +189,29 @@ Result<HunyuanDitModel> load_hunyuan_dit_blocks_from_gguf(
     bool include_mlp,
     bool include_cross_attention,
     bool include_timestep) {
-    const auto info = inspect_gguf(path);
-    if (!info.ok()) {
-        return Result<HunyuanDitModel>::failure(info.error());
-    }
-
-    HunyuanDitModel model;
     const auto names = hunyuan_dit_block_range_tensor_names(
         first_block,
         block_count,
         include_mlp,
         include_cross_attention,
         include_timestep);
-    for (const auto& name : names) {
-        const auto tensor_info = std::find_if(
-            info.value().tensor_infos.begin(),
-            info.value().tensor_infos.end(),
-            [&](const GgufTensorInfo& tensor) { return tensor.name == name; });
-        if (tensor_info == info.value().tensor_infos.end()) {
-            if (name.find(".bias") != std::string::npos || name.find(".norm") != std::string::npos ||
-                name.find("_norm") != std::string::npos || name.find(".mlp.") != std::string::npos ||
-                name.find(".moe.") != std::string::npos || name.find(".skip_") != std::string::npos) {
-                continue;
-            }
-            return Result<HunyuanDitModel>::failure("required block tensor not found: " + name);
-        }
+    return load_named_tensors_from_gguf(path, names);
+}
 
-        const auto bytes = read_gguf_tensor_data(path, info.value(), name);
-        if (!bytes.ok()) {
-            return Result<HunyuanDitModel>::failure(bytes.error());
-        }
-
-        RuntimeTensor runtime_tensor;
-        runtime_tensor.name = tensor_info->name;
-        runtime_tensor.type = tensor_info->type;
-        runtime_tensor.dimensions = tensor_info->dimensions;
-        runtime_tensor.bytes = bytes.value();
-        model.add_tensor(std::move(runtime_tensor));
-    }
-
-    return Result<HunyuanDitModel>::success(std::move(model));
+Result<HunyuanDitModel> load_hunyuan_dit_forward_from_gguf(
+    const std::string& path,
+    std::uint32_t first_block,
+    std::uint32_t block_count,
+    bool include_mlp,
+    bool include_cross_attention,
+    bool include_timestep) {
+    const auto names = hunyuan_dit_forward_tensor_names(
+        first_block,
+        block_count,
+        include_mlp,
+        include_cross_attention,
+        include_timestep);
+    return load_named_tensors_from_gguf(path, names);
 }
 
 } // namespace hy3d
