@@ -21,7 +21,7 @@ The first implementation must provide:
 - `hy3d.exe --help`
 - `hy3d.exe inspect --model <file.gguf>`
 - `hy3d.exe --inspect <file.gguf>` as a convenience alias
-- `hy3d.exe dit-block --model <file.gguf> [--block N] [--tokens N] [--context-tokens N] [--context-dim N] [--timestep N] [--heads N] [--head-dim N] [--no-cross-attn] [--no-timestep] [--no-mlp] [--dry-run]`
+- `hy3d.exe dit-block --model <file.gguf> [--block N] [--block-count N] [--tokens N] [--context-tokens N] [--context-dim N] [--timestep N] [--heads N] [--head-dim N] [--no-cross-attn] [--no-timestep] [--no-mlp] [--dry-run]`
 - `hy3d.exe generate --backend python --image <input.png> --out <output.glb> [--model-path <path>] [--low-vram]`
 - Clear Windows-friendly error messages.
 - CMake build and CTest smoke tests.
@@ -101,12 +101,13 @@ Expected behavior:
 
 - loads official Hunyuan3D GGUF tensor names for the requested block
 - maps `attn1.to_q/to_k/to_v`, `attn1.q_norm/k_norm`, `attn2.to_q/to_k/to_v`, `attn2.q_norm/k_norm`, `attn1/attn2.out_proj`, `norm1/norm2/norm3`, `mlp.fc1/fc2`, and `t_embedder.mlp.*` into the current runtime
-- runs the current CPU `run_dit_block()` primitive
+- maps MoE tensors including `moe.gate`, `moe.experts.*.net.0.proj`, `moe.experts.*.net.2`, and `moe.shared_experts.*`
+- runs the current CPU `run_dit_blocks_conditioned()` primitive over `--block-count`
 - prints loaded tensor count, output value count, and an L1 checksum
 
 ## Future Native GGUF Inference Phases
 
-1. Complete all-block DiT execution, including skip connections, MoE layers, attention pooling, and final projection.
+1. Complete all-block DiT execution with real latent/context inputs, attention pooling, and final projection.
 2. Implement native image preprocessing and optional ONNX image encoder bridge.
 3. Run the diffusion denoising loop with the scheduler.
 4. Decode VAE latents into density fields and meshes.
@@ -127,4 +128,4 @@ The Windows CUDA release is produced by `scripts/make_release.ps1`. The default 
 
 ## Native Runtime Direction
 
-The native C++ runtime now includes tensor loading, CPU linear/self-attention/cross-attention math, head-wise RMS q/k normalization, timestep embedding projection, layer norm, GELU, real GGUF block tensor-name mapping, a selective DiT block loader, a composable DiT block primitive, an Euler scheduler step, and a density-grid mesh decoder primitive. Remaining native work is to run all blocks with skip connections and MoE, implement image conditioning, run the denoising loop, decode VAE latents into density grids, and write final GLB output.
+The native C++ runtime now includes tensor loading, CPU linear/self-attention/cross-attention math, head-wise RMS q/k normalization, timestep embedding projection, layer norm, GELU, real GGUF block tensor-name mapping, a selective block/range loader, a sequential multi-block DiT primitive, simplified MoE inference routing, an Euler scheduler step, and a density-grid mesh decoder primitive. Remaining native work is to feed real latent/context inputs through all blocks, implement attention pooling/final projection, run the denoising loop, decode VAE latents into density grids, and write final GLB output.

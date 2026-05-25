@@ -42,7 +42,7 @@ std::string help_text() {
         << "  hy3d inspect --model <file.gguf>\n"
         << "  hy3d --inspect <file.gguf>\n"
         << "  hy3d tensor --model <file.gguf> --name <tensor> [--bytes N]\n"
-        << "  hy3d dit-block --model <file.gguf> [--block N] [--tokens N] [--context-tokens N] [--context-dim N] [--timestep N] [--heads N] [--head-dim N] [--no-cross-attn] [--no-timestep] [--no-mlp] [--dry-run]\n"
+        << "  hy3d dit-block --model <file.gguf> [--block N] [--block-count N] [--tokens N] [--context-tokens N] [--context-dim N] [--timestep N] [--heads N] [--head-dim N] [--no-cross-attn] [--no-timestep] [--no-mlp] [--dry-run]\n"
         << "  hy3d generate --backend python --image <input.png> --out <output.glb> [--model-path <path>] [--quality smoke|draft|normal] [--steps N]\n"
         << "  hy3d texture --backend python --mesh <input.glb> --image <input.png> --out <textured.glb> [--model-path <path>] [--resolution 512] [--max-views 6]\n"
         << "\n"
@@ -165,6 +165,17 @@ Result<CliOptions> parse_args(const std::vector<std::string>& args) {
                     return Result<CliOptions>::failure("--block must be an integer");
                 }
                 ++i;
+            } else if (arg == "--block-count") {
+                auto value = require_value(args, i, "--block-count");
+                if (!value.ok()) {
+                    return Result<CliOptions>::failure(value.error());
+                }
+                try {
+                    options.block_count = std::stoi(value.value());
+                } catch (...) {
+                    return Result<CliOptions>::failure("--block-count must be an integer");
+                }
+                ++i;
             } else if (arg == "--tokens") {
                 auto value = require_value(args, i, "--tokens");
                 if (!value.ok()) {
@@ -248,6 +259,9 @@ Result<CliOptions> parse_args(const std::vector<std::string>& args) {
         }
         if (options.block_index < 0) {
             return Result<CliOptions>::failure("--block must be non-negative");
+        }
+        if (options.block_count <= 0) {
+            return Result<CliOptions>::failure("--block-count must be positive");
         }
         if (options.tokens <= 0 || options.context_tokens <= 0 || options.context_dim <= 0 ||
             options.heads <= 0 || options.head_dim <= 0) {

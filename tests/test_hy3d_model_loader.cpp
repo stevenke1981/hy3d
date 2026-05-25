@@ -97,6 +97,11 @@ int main() {
     assert(std::find(full_names.begin(), full_names.end(), "blocks.0.attn2.to_k.weight") != full_names.end());
     assert(std::find(full_names.begin(), full_names.end(), "blocks.0.norm3.weight") != full_names.end());
     assert(std::find(full_names.begin(), full_names.end(), "t_embedder.mlp.0.weight") != full_names.end());
+    const auto moe_names = hy3d::hunyuan_dit_block_tensor_names(18, true, true, true);
+    assert(std::find(moe_names.begin(), moe_names.end(), "blocks.18.moe.gate.weight") != moe_names.end());
+    assert(std::find(moe_names.begin(), moe_names.end(), "blocks.18.moe.experts.7.net.2.weight") != moe_names.end());
+    const auto range_names = hy3d::hunyuan_dit_block_range_tensor_names(0, 2, true, false, false);
+    assert(std::find(range_names.begin(), range_names.end(), "blocks.1.attn1.to_q.weight") != range_names.end());
 
     const auto path = write_block_gguf();
     const auto loaded = hy3d::load_hunyuan_dit_block_from_gguf(path.string(), 0, false);

@@ -83,6 +83,22 @@ public:
         std::size_t heads,
         std::size_t head_dim) const;
 
+    Result<std::vector<float>> run_dit_blocks_conditioned(
+        std::uint32_t first_block,
+        std::uint32_t block_count,
+        const std::vector<float>& input,
+        std::size_t tokens,
+        const std::vector<float>& context,
+        std::size_t context_tokens,
+        std::size_t heads,
+        std::size_t head_dim) const;
+
+    Result<std::vector<float>> run_moe_block(
+        const std::string& prefix,
+        const std::vector<float>& input,
+        std::size_t tokens,
+        std::size_t top_k = 2) const;
+
     Result<std::vector<float>> project_timestep_conditioning(float timestep, std::size_t width) const;
 
     Result<std::string> plan_forward(

@@ -165,5 +165,34 @@ int main() {
     assert(timestep.ok());
     assert(timestep.value().size() == 2);
 
+    hy3d::HunyuanDitModel moe;
+    moe.add_tensor(f32_tensor("blk.0.moe.gate.weight", {2, 2}, {50.0f, 0.0f, 0.0f, 50.0f}));
+    moe.add_tensor(f32_tensor("blk.0.moe.experts.0.net.0.proj.weight", {2, 2}, {1.0f, 0.0f, 0.0f, 1.0f}));
+    moe.add_tensor(f32_tensor("blk.0.moe.experts.0.net.0.proj.bias", {2}, {0.0f, 0.0f}));
+    moe.add_tensor(f32_tensor("blk.0.moe.experts.0.net.2.weight", {2, 2}, {1.0f, 0.0f, 0.0f, 1.0f}));
+    moe.add_tensor(f32_tensor("blk.0.moe.experts.0.net.2.bias", {2}, {0.0f, 0.0f}));
+    moe.add_tensor(f32_tensor("blk.0.moe.experts.1.net.0.proj.weight", {2, 2}, {2.0f, 0.0f, 0.0f, 2.0f}));
+    moe.add_tensor(f32_tensor("blk.0.moe.experts.1.net.0.proj.bias", {2}, {0.0f, 0.0f}));
+    moe.add_tensor(f32_tensor("blk.0.moe.experts.1.net.2.weight", {2, 2}, {1.0f, 0.0f, 0.0f, 1.0f}));
+    moe.add_tensor(f32_tensor("blk.0.moe.experts.1.net.2.bias", {2}, {0.0f, 0.0f}));
+    moe.add_tensor(f32_tensor("blk.0.moe.shared_experts.net.0.proj.weight", {2, 2}, {0.0f, 0.0f, 0.0f, 0.0f}));
+    moe.add_tensor(f32_tensor("blk.0.moe.shared_experts.net.2.weight", {2, 2}, {0.0f, 0.0f, 0.0f, 0.0f}));
+    const auto moe_out = moe.run_moe_block("blk.0", {1.0f, 0.0f}, 1, 1);
+    assert(moe_out.ok());
+    require_near(moe_out.value()[0], 0.841192f, "MoE top1 expert output dim0");
+    require_near(moe_out.value()[1], 0.0f, "MoE top1 expert output dim1");
+
+    hy3d::HunyuanDitModel chain;
+    for (int block_index = 0; block_index < 2; ++block_index) {
+        const auto prefix = std::string("blocks.") + std::to_string(block_index);
+        chain.add_tensor(f32_tensor(prefix + ".attn1.to_q.weight", {2, 2}, {1.0f, 0.0f, 0.0f, 1.0f}));
+        chain.add_tensor(f32_tensor(prefix + ".attn1.to_k.weight", {2, 2}, {1.0f, 0.0f, 0.0f, 1.0f}));
+        chain.add_tensor(f32_tensor(prefix + ".attn1.to_v.weight", {2, 2}, {1.0f, 0.0f, 0.0f, 1.0f}));
+        chain.add_tensor(f32_tensor(prefix + ".attn1.out_proj.weight", {2, 2}, {1.0f, 0.0f, 0.0f, 1.0f}));
+    }
+    const auto chain_out = chain.run_dit_blocks_conditioned(0, 2, {1.0f, 0.0f}, 1, {}, 0, 1, 2);
+    assert(chain_out.ok());
+    assert(chain_out.value().size() == 2);
+
     return 0;
 }

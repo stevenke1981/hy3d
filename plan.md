@@ -301,3 +301,36 @@ Load `t_embedder.mlp.*`, project a sinusoidal timestep embedding, and prepend it
 - [x] **Step 4: Verify and publish**
 
 Run CTest, run real GGUF smoke with default conditioned block path, then push to GitHub.
+
+### Task 11: Multi-Block and MoE Forward
+
+**Files:**
+- Modify: `src/hy3d_runtime.*`
+- Modify: `src/hy3d_model_loader.*`
+- Modify: `src/hy3d_cli.*`
+- Modify: `src/main.cpp`
+- Modify: `tests/test_hy3d_runtime.cpp`
+- Modify: `tests/test_hy3d_model_loader.cpp`
+- Modify: `tests/test_cli.cpp`
+- Modify: `README.md`
+- Modify: `spec.md`
+
+- [x] **Step 1: Add multi-block CLI control**
+
+Add `--block-count N` so `dit-block` can load and run a contiguous block range.
+
+- [x] **Step 2: Load range tensors**
+
+Add block-range tensor name generation and GGUF loading for repeated `blocks.N.*` tensors.
+
+- [x] **Step 3: Add sequential block runner**
+
+Run `blocks.first..first+count-1` with optional skip projection support when `skip_linear/skip_norm` tensors exist.
+
+- [x] **Step 4: Add MoE inference primitive**
+
+Implement simplified inference-time top-k MoE routing over `moe.gate`, routed experts, and `shared_experts`.
+
+- [x] **Step 5: Verify**
+
+Run CTest, real GGUF block-count smoke, and real block 18 MoE smoke.

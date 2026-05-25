@@ -111,7 +111,7 @@ int main() {
     {
         const std::vector<std::string> args = {
             "hy3d", "dit-block", "--model", "model.gguf", "--block", "0",
-            "--tokens", "1", "--context-tokens", "2", "--context-dim", "1024",
+            "--tokens", "1", "--block-count", "2", "--context-tokens", "2", "--context-dim", "1024",
             "--heads", "16", "--head-dim", "128", "--timestep", "12.5",
             "--no-cross-attn", "--no-timestep", "--no-mlp", "--dry-run"};
         const auto parsed = hy3d::parse_args(args);
@@ -119,6 +119,7 @@ int main() {
         require(parsed.value().command == hy3d::CommandKind::DitBlock, "dit-block command kind");
         require(parsed.value().model_path == "model.gguf", "dit-block model path");
         require(parsed.value().block_index == 0, "dit-block index");
+        require(parsed.value().block_count == 2, "dit-block count");
         require(parsed.value().tokens == 1, "dit-block tokens");
         require(parsed.value().context_tokens == 2, "dit-block context tokens");
         require(parsed.value().context_dim == 1024, "dit-block context dim");

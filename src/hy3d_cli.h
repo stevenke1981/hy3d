@@ -30,6 +30,7 @@ struct CliOptions {
     int steps = 30;
     int seed = 42;
     int block_index = 0;
+    int block_count = 1;
     int max_views = 6;
     int tokens = 1;
     int context_tokens = 1;

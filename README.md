@@ -119,14 +119,15 @@ Run a real block-0 DiT smoke pass from the converted GGUF:
 .\build\Release\hy3d.exe dit-block `
   --model .\models\hy3d-shape-f16.gguf `
   --block 0 `
+  --block-count 2 `
   --tokens 1 `
   --heads 16 `
   --head-dim 128
 ```
 
-By default this smoke path now loads attn1 q/k RMSNorm, attn2 cross-attention, MLP, and the top-level timestep embedder. It prepends one timestep conditioning token to the synthetic latent token buffer, matching the official Hunyuan3D block input shape more closely. Use `--no-cross-attn`, `--no-timestep`, `--no-mlp`, or `--dry-run` to narrow the smoke path.
+By default this smoke path now loads one or more DiT blocks, attn1 q/k RMSNorm, attn2 cross-attention, MLP or MoE feed-forward tensors, skip projection tensors, and the top-level timestep embedder. It prepends one timestep conditioning token to the synthetic latent token buffer, matching the official Hunyuan3D block input shape more closely. Use `--block-count N`, `--no-cross-attn`, `--no-timestep`, `--no-mlp`, or `--dry-run` to narrow the smoke path.
 
-On the local converted `hy3d-shape-f16.gguf`, block 0 loads 28 tensors with the default path and 11 tensors with `--no-cross-attn --no-timestep --no-mlp`.
+On the local converted `hy3d-shape-f16.gguf`, blocks 0-1 load 52 tensors and run through the native multi-block path. Block 18 loads and runs the MoE path with `--no-cross-attn --no-timestep`.
 
 ## Native Runtime Status
 
@@ -149,6 +150,8 @@ Implemented:
 - `HunyuanDitModel::run_attention_block()` for `Q/K/V projection -> attention -> output projection`.
 - CPU layer norm and GELU.
 - `HunyuanDitModel::run_dit_block()` for `norm1 -> attn1 -> residual -> optional norm2/attn2 -> residual -> norm3/MLP -> residual`.
+- `HunyuanDitModel::run_dit_blocks_conditioned()` for sequential multi-block smoke forward with skip projection support.
+- `HunyuanDitModel::run_moe_block()` for simplified inference-time top-k MoE routing using `moe.gate`, routed experts, and shared experts.
 - Top-level `t_embedder` projection for timestep conditioning token smoke tests.
 - Real GGUF tensor-name mapping for official Hunyuan3D names such as `blocks.0.attn1.to_q.weight`, `blocks.0.attn1.out_proj.weight`, and `blocks.0.mlp.fc1.weight`.
 - Selective GGUF block tensor loading through `load_hunyuan_dit_block_from_gguf()`.
@@ -158,7 +161,7 @@ Implemented:
 
 Not implemented yet:
 
-- Full Hunyuan3D DiT forward graph across every block, skip connections, MoE layers, attention pooling, and final projection.
+- Full Hunyuan3D DiT forward graph across every block, attention pooling, final projection, and native latent I/O.
 - Image encoder conditioning.
 - Diffusion denoising loop.
 - Full VAE latent-to-density decode.
@@ -170,8 +173,9 @@ Not implemented yet:
 .\build\Release\hy3d.exe --help
 .\build\Release\hy3d.exe inspect --model .\models\hy3d-shape-q8.gguf
 .\build\Release\hy3d.exe --inspect .\models\hy3d-shape-q8.gguf
-.\build\Release\hy3d.exe dit-block --model .\models\hy3d-shape-f16.gguf --block 0 --tokens 1 --heads 16 --head-dim 128
+.\build\Release\hy3d.exe dit-block --model .\models\hy3d-shape-f16.gguf --block 0 --block-count 2 --tokens 1 --heads 16 --head-dim 128
 .\build\Release\hy3d.exe dit-block --model .\models\hy3d-shape-f16.gguf --block 0 --tokens 1 --heads 16 --head-dim 128 --no-cross-attn --no-timestep --no-mlp
+.\build\Release\hy3d.exe dit-block --model .\models\hy3d-shape-f16.gguf --block 18 --tokens 1 --heads 16 --head-dim 128 --no-cross-attn --no-timestep
 ```
 
 Python backend bridge, verified on this machine with RTX 3070 Ti:

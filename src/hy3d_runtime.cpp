@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <sstream>
 #include <utility>
 
@@ -167,6 +168,11 @@ std::string attention_suffix(const std::string& attention_name, const std::strin
         }
     }
     return attention_name + "." + suffix;
+}
+
+std::vector<float> token_slice(const std::vector<float>& values, std::size_t token, std::size_t features) {
+    const auto begin = values.begin() + static_cast<std::ptrdiff_t>(token * features);
+    return std::vector<float>(begin, begin + static_cast<std::ptrdiff_t>(features));
 }
 
 } // namespace
@@ -423,18 +429,6 @@ Result<std::vector<float>> HunyuanDitModel::run_dit_block_conditioned(
         }
     }
 
-    const auto fc1 = find_mapped_tensor(prefix, "mlp_fc1.weight");
-    const auto fc2 = find_mapped_tensor(prefix, "mlp_fc2.weight");
-    if (fc1 == nullptr && fc2 == nullptr) {
-        return Result<std::vector<float>>::success(hidden);
-    }
-    if (fc1 == nullptr) {
-        return Result<std::vector<float>>::failure("tensor not found: " + prefix + ".mlp_fc1.weight");
-    }
-    if (fc2 == nullptr) {
-        return Result<std::vector<float>>::failure("tensor not found: " + prefix + ".mlp_fc2.weight");
-    }
-
     const auto norm3_weight = find_tensor(prefix + ".norm3.weight");
     const auto norm3_bias = find_tensor(prefix + ".norm3.bias");
     const auto norm2 = layer_norm_batch(
@@ -446,23 +440,191 @@ Result<std::vector<float>> HunyuanDitModel::run_dit_block_conditioned(
         return Result<std::vector<float>>::failure(norm2.error());
     }
 
-    const auto mlp_hidden = linear_projection_batch(norm2.value(), tokens, *fc1, find_mapped_tensor(prefix, "mlp_fc1.bias"));
-    if (!mlp_hidden.ok()) {
-        return Result<std::vector<float>>::failure(mlp_hidden.error());
+    Result<std::vector<float>> feed_forward = Result<std::vector<float>>::failure("feed-forward not run");
+    const auto fc1 = find_mapped_tensor(prefix, "mlp_fc1.weight");
+    const auto fc2 = find_mapped_tensor(prefix, "mlp_fc2.weight");
+    const auto moe_gate = find_tensor(prefix + ".moe.gate.weight");
+    if (fc1 != nullptr || fc2 != nullptr) {
+        if (fc1 == nullptr) {
+            return Result<std::vector<float>>::failure("tensor not found: " + prefix + ".mlp_fc1.weight");
+        }
+        if (fc2 == nullptr) {
+            return Result<std::vector<float>>::failure("tensor not found: " + prefix + ".mlp_fc2.weight");
+        }
+        const auto mlp_hidden = linear_projection_batch(norm2.value(), tokens, *fc1, find_mapped_tensor(prefix, "mlp_fc1.bias"));
+        if (!mlp_hidden.ok()) {
+            return Result<std::vector<float>>::failure(mlp_hidden.error());
+        }
+        const auto activated = gelu(mlp_hidden.value());
+        feed_forward = linear_projection_batch(activated, tokens, *fc2, find_mapped_tensor(prefix, "mlp_fc2.bias"));
+    } else if (moe_gate != nullptr) {
+        feed_forward = run_moe_block(prefix, norm2.value(), tokens, 2);
+    } else {
+        return Result<std::vector<float>>::success(hidden);
     }
-    const auto activated = gelu(mlp_hidden.value());
-    const auto mlp_out = linear_projection_batch(activated, tokens, *fc2, find_mapped_tensor(prefix, "mlp_fc2.bias"));
-    if (!mlp_out.ok()) {
-        return Result<std::vector<float>>::failure(mlp_out.error());
+    if (!feed_forward.ok()) {
+        return Result<std::vector<float>>::failure(feed_forward.error());
     }
-    if (mlp_out.value().size() != hidden.size()) {
-        return Result<std::vector<float>>::failure("DiT MLP output size does not match residual input");
+    if (feed_forward.value().size() != hidden.size()) {
+        return Result<std::vector<float>>::failure("DiT feed-forward output size does not match residual input");
     }
 
     std::vector<float> output(hidden.size(), 0.0f);
     for (std::size_t i = 0; i < hidden.size(); ++i) {
-        output[i] = hidden[i] + mlp_out.value()[i];
+        output[i] = hidden[i] + feed_forward.value()[i];
     }
+    return Result<std::vector<float>>::success(output);
+}
+
+Result<std::vector<float>> HunyuanDitModel::run_dit_blocks_conditioned(
+    std::uint32_t first_block,
+    std::uint32_t block_count,
+    const std::vector<float>& input,
+    std::size_t tokens,
+    const std::vector<float>& context,
+    std::size_t context_tokens,
+    std::size_t heads,
+    std::size_t head_dim) const {
+    if (block_count == 0) {
+        return Result<std::vector<float>>::failure("DiT block count must be positive");
+    }
+    std::vector<float> hidden = input;
+    std::vector<std::vector<float>> skip_stack;
+    for (std::uint32_t offset = 0; offset < block_count; ++offset) {
+        const auto block_index = first_block + offset;
+        const auto prefix = std::string("blocks.") + std::to_string(block_index);
+        const auto* skip_weight = find_tensor(prefix + ".skip_linear.weight");
+        if (skip_weight != nullptr && !skip_stack.empty()) {
+            const auto skip = std::move(skip_stack.back());
+            skip_stack.pop_back();
+            if (skip.size() != hidden.size()) {
+                return Result<std::vector<float>>::failure("DiT skip value size does not match hidden state");
+            }
+            const auto features = hidden.size() / tokens;
+            std::vector<float> concatenated;
+            concatenated.reserve(hidden.size() * 2);
+            for (std::size_t token = 0; token < tokens; ++token) {
+                const auto base = token * features;
+                concatenated.insert(concatenated.end(), skip.begin() + static_cast<std::ptrdiff_t>(base), skip.begin() + static_cast<std::ptrdiff_t>(base + features));
+                concatenated.insert(concatenated.end(), hidden.begin() + static_cast<std::ptrdiff_t>(base), hidden.begin() + static_cast<std::ptrdiff_t>(base + features));
+            }
+            const auto projected = linear_projection_batch(concatenated, tokens, *skip_weight, find_tensor(prefix + ".skip_linear.bias"));
+            if (!projected.ok()) {
+                return Result<std::vector<float>>::failure(projected.error());
+            }
+            const auto normalized = layer_norm_batch(
+                projected.value(),
+                tokens,
+                find_tensor(prefix + ".skip_norm.weight"),
+                find_tensor(prefix + ".skip_norm.bias"));
+            if (!normalized.ok()) {
+                return Result<std::vector<float>>::failure(normalized.error());
+            }
+            hidden = normalized.value();
+        }
+
+        const auto output = run_dit_block_conditioned(prefix, hidden, tokens, context, context_tokens, heads, head_dim);
+        if (!output.ok()) {
+            return Result<std::vector<float>>::failure(output.error());
+        }
+        hidden = output.value();
+        if (skip_weight == nullptr) {
+            skip_stack.push_back(hidden);
+        }
+    }
+    return Result<std::vector<float>>::success(hidden);
+}
+
+Result<std::vector<float>> HunyuanDitModel::run_moe_block(
+    const std::string& prefix,
+    const std::vector<float>& input,
+    std::size_t tokens,
+    std::size_t top_k) const {
+    const auto* gate = find_tensor(prefix + ".moe.gate.weight");
+    if (gate == nullptr) {
+        return Result<std::vector<float>>::failure("tensor not found: " + prefix + ".moe.gate.weight");
+    }
+    if (gate->dimensions.size() != 2) {
+        return Result<std::vector<float>>::failure("MoE gate must be 2D: " + gate->name);
+    }
+    const auto experts = static_cast<std::size_t>(gate->dimensions[0]);
+    const auto features = static_cast<std::size_t>(gate->dimensions[1]);
+    if (experts == 0 || features == 0 || top_k == 0) {
+        return Result<std::vector<float>>::failure("MoE dimensions and top-k must be positive");
+    }
+    if (input.size() != tokens * features) {
+        return Result<std::vector<float>>::failure("MoE input size does not match gate width");
+    }
+
+    const auto logits = linear_projection_batch(input, tokens, *gate, nullptr);
+    if (!logits.ok()) {
+        return Result<std::vector<float>>::failure(logits.error());
+    }
+
+    std::vector<float> output(input.size(), 0.0f);
+    const auto selected_count = std::min(top_k, experts);
+    for (std::size_t token = 0; token < tokens; ++token) {
+        const auto scores_begin = logits.value().begin() + static_cast<std::ptrdiff_t>(token * experts);
+        const std::vector<float> token_logits(scores_begin, scores_begin + static_cast<std::ptrdiff_t>(experts));
+        const auto scores = softmax(token_logits);
+        if (!scores.ok()) {
+            return Result<std::vector<float>>::failure(scores.error());
+        }
+        std::vector<std::pair<float, std::size_t>> ranked;
+        ranked.reserve(experts);
+        for (std::size_t expert = 0; expert < experts; ++expert) {
+            ranked.emplace_back(scores.value()[expert], expert);
+        }
+        std::partial_sort(
+            ranked.begin(),
+            ranked.begin() + static_cast<std::ptrdiff_t>(selected_count),
+            ranked.end(),
+            [](const auto& left, const auto& right) { return left.first > right.first; });
+
+        const auto token_input = token_slice(input, token, features);
+        for (std::size_t rank = 0; rank < selected_count; ++rank) {
+            const auto expert = ranked[rank].second;
+            const auto expert_prefix = prefix + ".moe.experts." + std::to_string(expert);
+            const auto* fc1 = find_tensor(expert_prefix + ".net.0.proj.weight");
+            const auto* fc2 = find_tensor(expert_prefix + ".net.2.weight");
+            if (fc1 == nullptr || fc2 == nullptr) {
+                continue;
+            }
+            const auto hidden = linear_projection(token_input, *fc1, find_tensor(expert_prefix + ".net.0.proj.bias"));
+            if (!hidden.ok()) {
+                return Result<std::vector<float>>::failure(hidden.error());
+            }
+            const auto activated = gelu(hidden.value());
+            const auto expert_out = linear_projection(activated, *fc2, find_tensor(expert_prefix + ".net.2.bias"));
+            if (!expert_out.ok()) {
+                return Result<std::vector<float>>::failure(expert_out.error());
+            }
+            for (std::size_t feature = 0; feature < features; ++feature) {
+                output[token * features + feature] += ranked[rank].first * expert_out.value()[feature];
+            }
+        }
+    }
+
+    const auto* shared_fc1 = find_tensor(prefix + ".moe.shared_experts.net.0.proj.weight");
+    const auto* shared_fc2 = find_tensor(prefix + ".moe.shared_experts.net.2.weight");
+    if (shared_fc1 != nullptr && shared_fc2 != nullptr) {
+        const auto hidden = linear_projection_batch(input, tokens, *shared_fc1, find_tensor(prefix + ".moe.shared_experts.net.0.proj.bias"));
+        if (!hidden.ok()) {
+            return Result<std::vector<float>>::failure(hidden.error());
+        }
+        const auto activated = gelu(hidden.value());
+        const auto shared_out = linear_projection_batch(activated, tokens, *shared_fc2, find_tensor(prefix + ".moe.shared_experts.net.2.bias"));
+        if (!shared_out.ok()) {
+            return Result<std::vector<float>>::failure(shared_out.error());
+        }
+        if (shared_out.value().size() != output.size()) {
+            return Result<std::vector<float>>::failure("MoE shared expert output size mismatch");
+        }
+        for (std::size_t i = 0; i < output.size(); ++i) {
+            output[i] += shared_out.value()[i];
+        }
+    }
+
     return Result<std::vector<float>>::success(output);
 }
 

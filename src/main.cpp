@@ -76,9 +76,10 @@ int main(int argc, char** argv) {
     }
 
     if (options.command == hy3d::CommandKind::DitBlock) {
-        const auto model = hy3d::load_hunyuan_dit_block_from_gguf(
+        const auto model = hy3d::load_hunyuan_dit_blocks_from_gguf(
             options.model_path,
             static_cast<std::uint32_t>(options.block_index),
+            static_cast<std::uint32_t>(options.block_count),
             !options.no_mlp,
             !options.no_cross_attn,
             !options.no_timestep);
@@ -89,6 +90,7 @@ int main(int argc, char** argv) {
 
         const std::string prefix = "blocks." + std::to_string(options.block_index);
         std::cout << "dit_block: " << prefix << "\n";
+        std::cout << "block_count: " << options.block_count << "\n";
         std::cout << "loaded_tensors: " << model.value().tensor_count() << "\n";
         std::cout << "tokens: " << options.tokens << "\n";
         std::cout << "heads: " << options.heads << "\n";
@@ -129,18 +131,22 @@ int main(int argc, char** argv) {
 
         hy3d::Result<std::vector<float>> output = hy3d::Result<std::vector<float>>::failure("not run");
         if (options.no_cross_attn) {
-            output = model.value().run_dit_block(
-                prefix,
+            output = model.value().run_dit_blocks_conditioned(
+                static_cast<std::uint32_t>(options.block_index),
+                static_cast<std::uint32_t>(options.block_count),
                 input,
                 block_tokens,
+                {},
+                0,
                 static_cast<std::size_t>(options.heads),
                 static_cast<std::size_t>(options.head_dim));
         } else {
             std::vector<float> context(
                 static_cast<std::size_t>(options.context_tokens) * static_cast<std::size_t>(options.context_dim),
                 0.0f);
-            output = model.value().run_dit_block_conditioned(
-                prefix,
+            output = model.value().run_dit_blocks_conditioned(
+                static_cast<std::uint32_t>(options.block_index),
+                static_cast<std::uint32_t>(options.block_count),
                 input,
                 block_tokens,
                 context,
