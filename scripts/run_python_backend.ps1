@@ -9,7 +9,7 @@ param(
 
     [string] $Device = "cuda",
 
-    [ValidateSet("smoke", "draft", "normal")]
+    [ValidateSet("smoke", "draft", "normal", "character-normal", "final")]
     [string] $Quality = "normal",
 
     [int] $Steps = 30,

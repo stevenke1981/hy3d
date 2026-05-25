@@ -385,3 +385,32 @@ Generate `outputs\frieren-character-smoke.glb` from `C:\Users\steven\Downloads\C
 - [x] **Step 3: Document reuse**
 
 Add a README section with the reusable command, options, and output sidecars.
+
+### Task 14: Character Presets and Quality Forwarding
+
+**Files:**
+- Modify: `src/hy3d_cli.*`
+- Modify: `src/hy3d_backend.*`
+- Modify: `src/main.cpp`
+- Modify: `scripts\generate_3d_model.ps1`
+- Modify: `scripts\run_python_backend.ps1`
+- Modify: `scripts\hy3d_generate.py`
+- Modify: `tests\test_cli.cpp`
+- Modify: `tests\test_backend.cpp`
+- Modify: `README.md`
+
+- [x] **Step 1: Add failing quality preset tests**
+
+Verify that `character-normal` maps to 40 steps and `final` maps to 50 steps, and that backend requests can carry a quality value.
+
+- [x] **Step 2: Forward quality through the C++ bridge**
+
+Add `GenerateRequest::quality`, copy `CliOptions::quality` in `main.cpp`, and pass `-Quality` to `scripts\run_python_backend.ps1`.
+
+- [x] **Step 3: Align all script presets**
+
+Allow `character-normal` and `final` in the reusable wrapper, Python backend launcher, and Python generation script. Make the reusable wrapper default to `character-normal`.
+
+- [x] **Step 4: Verify and regenerate**
+
+Run CTest, Python dry-run metadata verification, and generate a new `final` GLB for the character reference.

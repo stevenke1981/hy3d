@@ -58,6 +58,7 @@ int main() {
         const auto image = write_temp_image();
         hy3d::GenerateRequest request;
         request.backend = "python";
+        request.quality = "character-normal";
         request.image_path = image.string();
         request.output_path = (std::filesystem::temp_directory_path() / "hy3d-test-output.glb").string();
         request.dry_run = true;

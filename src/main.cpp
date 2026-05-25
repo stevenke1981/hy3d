@@ -266,6 +266,7 @@ int main(int argc, char** argv) {
         hy3d::GenerateRequest request;
         request.backend = options.backend;
         request.device = options.device;
+        request.quality = options.quality;
         request.image_path = options.image_path;
         request.output_path = options.output_path;
         request.model_path = options.model_path;

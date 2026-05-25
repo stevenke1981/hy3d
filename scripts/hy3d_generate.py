@@ -23,7 +23,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--source-root", default="", help="Official Hunyuan3D source checkout.")
     parser.add_argument("--subfolder", default="hunyuan3d-dit-v2-1", help="Shape model subfolder.")
     parser.add_argument("--device", default="cuda", choices=("cuda", "cpu"), help="Inference device.")
-    parser.add_argument("--quality", default="normal", choices=("smoke", "draft", "normal"), help="Step preset.")
+    parser.add_argument(
+        "--quality",
+        default="normal",
+        choices=("smoke", "draft", "normal", "character-normal", "final"),
+        help="Step preset.",
+    )
     parser.add_argument("--steps", type=int, default=None, help="Diffusion inference steps. Overrides --quality.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
     parser.add_argument("--low-vram", action="store_true", help="Enable model CPU offload when available.")
@@ -35,7 +40,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def steps_for_quality(quality: str) -> int:
-    return {"smoke": 5, "draft": 10, "normal": 30}[quality]
+    return {"smoke": 5, "draft": 10, "normal": 30, "character-normal": 40, "final": 50}[quality]
 
 
 def resolve_paths(args: argparse.Namespace) -> tuple[pathlib.Path, pathlib.Path]:

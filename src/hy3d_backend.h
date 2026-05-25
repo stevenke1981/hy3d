@@ -9,6 +9,7 @@ namespace hy3d {
 struct GenerateRequest {
     std::string backend = "python";
     std::string device = "cuda";
+    std::string quality = "normal";
     std::string image_path;
     std::string output_path;
     std::string model_path;

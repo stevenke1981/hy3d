@@ -71,6 +71,26 @@ int main() {
 
     {
         const std::vector<std::string> args = {
+            "hy3d", "generate", "--backend", "python", "--image", "input.png",
+            "--out", "out.glb", "--quality", "character-normal"};
+        const auto parsed = hy3d::parse_args(args);
+        require(parsed.ok(), "generate character-normal quality should parse");
+        require(parsed.value().quality == "character-normal", "generate character-normal quality");
+        require(parsed.value().steps == 40, "generate character-normal steps");
+    }
+
+    {
+        const std::vector<std::string> args = {
+            "hy3d", "generate", "--backend", "python", "--image", "input.png",
+            "--out", "out.glb", "--quality", "final"};
+        const auto parsed = hy3d::parse_args(args);
+        require(parsed.ok(), "generate final quality should parse");
+        require(parsed.value().quality == "final", "generate final quality");
+        require(parsed.value().steps == 50, "generate final steps");
+    }
+
+    {
+        const std::vector<std::string> args = {
             "hy3d", "generate", "--image", "input.png", "--out", "out.glb",
             "--quality", "smoke", "--steps", "8"};
         const auto parsed = hy3d::parse_args(args);

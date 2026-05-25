@@ -42,14 +42,14 @@ Use `scripts\generate_3d_model.ps1` to turn any local image into a GLB through t
 ```powershell
 .\scripts\generate_3d_model.ps1 `
   -ImagePath "C:\Users\steven\Downloads\ChatGPT Image 2026年5月25日 下午11_20_07.png" `
-  -OutputPath .\outputs\frieren-character-smoke.glb `
-  -Quality smoke `
+  -OutputPath .\outputs\frieren-character-normal.glb `
+  -Quality character-normal `
   -Seed 42
 ```
 
 Useful options:
 
-- `-Quality smoke|draft|normal`: maps to the backend generation presets.
+- `-Quality smoke|draft|normal|character-normal|final`: maps to the backend generation presets.
 - `-Steps N`: overrides the quality preset step count.
 - `-Texture`: runs Hunyuan3D-Paint after shape generation and writes `*-textured.glb`.
 - `-NoRembg`: keeps the original image background.
@@ -61,6 +61,14 @@ Each run writes sidecars next to the output model:
 
 - `output.glb.log.txt`
 - `output.glb.json`
+
+Preset steps:
+
+- `smoke`: 5 steps, CUDA/backend checks only.
+- `draft`: 10 steps, quick preview.
+- `normal`: 30 steps, general shape generation.
+- `character-normal`: 40 steps, the default wrapper preset for single-image character references.
+- `final`: 50 steps, slower final pass.
 
 ## Download Hunyuan3D Models
 

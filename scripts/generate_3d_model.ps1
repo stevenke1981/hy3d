@@ -6,8 +6,8 @@ param(
 
     [string] $ModelPath = "",
 
-    [ValidateSet("smoke", "draft", "normal")]
-    [string] $Quality = "smoke",
+    [ValidateSet("smoke", "draft", "normal", "character-normal", "final")]
+    [string] $Quality = "character-normal",
 
     [int] $Steps = 0,
 

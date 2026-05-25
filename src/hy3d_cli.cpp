@@ -18,7 +18,8 @@ Result<std::string> require_value(const std::vector<std::string>& args, std::siz
 }
 
 bool is_quality(const std::string& quality) {
-    return quality == "smoke" || quality == "draft" || quality == "normal";
+    return quality == "smoke" || quality == "draft" || quality == "normal" ||
+        quality == "character-normal" || quality == "final";
 }
 
 int steps_for_quality(const std::string& quality) {
@@ -27,6 +28,12 @@ int steps_for_quality(const std::string& quality) {
     }
     if (quality == "draft") {
         return 10;
+    }
+    if (quality == "character-normal") {
+        return 40;
+    }
+    if (quality == "final") {
+        return 50;
     }
     return 30;
 }
@@ -44,7 +51,7 @@ std::string help_text() {
         << "  hy3d tensor --model <file.gguf> --name <tensor> [--bytes N]\n"
         << "  hy3d dit-block --model <file.gguf> [--block N] [--block-count N] [--tokens N] [--context-tokens N] [--context-dim N] [--timestep N] [--heads N] [--head-dim N] [--no-cross-attn] [--no-timestep] [--no-mlp] [--dry-run]\n"
         << "  hy3d dit-forward --model <file.gguf> [--block N] [--block-count N] [--latent-tokens N] [--latent-dim N] [--context-tokens N] [--context-dim N] [--latent-bin f32.bin] [--context-bin f32.bin] [--timestep N] [--dry-run]\n"
-        << "  hy3d generate --backend python --image <input.png> --out <output.glb> [--model-path <path>] [--quality smoke|draft|normal] [--steps N]\n"
+        << "  hy3d generate --backend python --image <input.png> --out <output.glb> [--model-path <path>] [--quality smoke|draft|normal|character-normal|final] [--steps N]\n"
         << "  hy3d texture --backend python --mesh <input.glb> --image <input.png> --out <textured.glb> [--model-path <path>] [--resolution 512] [--max-views 6]\n"
         << "\n"
         << "Commands:\n"
@@ -59,6 +66,8 @@ std::string help_text() {
         << "  smoke       5 steps, useful for CUDA/backend checks.\n"
         << "  draft       10 steps, quick preview.\n"
         << "  normal      30 steps, default quality. Explicit --steps overrides presets.\n"
+        << "  character-normal 40 steps, better for single-image character references.\n"
+        << "  final       50 steps, slower final pass.\n"
         << "\n"
         << "Backends:\n"
         << "  python      Bridge to scripts/run_python_backend.ps1.\n"
@@ -508,7 +517,7 @@ Result<CliOptions> parse_args(const std::vector<std::string>& args) {
             return Result<CliOptions>::failure("generate requires --out <output.glb>");
         }
         if (!is_quality(options.quality)) {
-            return Result<CliOptions>::failure("--quality must be smoke, draft, or normal");
+            return Result<CliOptions>::failure("--quality must be smoke, draft, normal, character-normal, or final");
         }
         if (!steps_set) {
             options.steps = steps_for_quality(options.quality);

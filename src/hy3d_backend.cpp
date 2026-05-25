@@ -112,6 +112,8 @@ Result<int> run_generate(const GenerateRequest& request) {
         request.output_path,
         "-Device",
         request.device,
+        "-Quality",
+        request.quality,
         "-Steps",
         std::to_string(request.steps),
         "-Seed",
