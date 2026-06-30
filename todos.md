@@ -8,7 +8,7 @@
 
 ## 2026-06-30 實作狀態
 
-已完成 14/15 項。全新 release zip 已完成線上 source/model、136-package venv、Windows extensions、shape 與 texture CUDA smoke；結構驗證亦支援含空白/中文路徑。唯一保留未勾選的是 native extension 在非 ASCII 路徑仍受 PyTorch/Ninja 亂碼限制。
+已完成 15/15 項。全新 release zip 已完成線上 source/model、136-package venv、Windows extensions、shape 與 texture CUDA smoke；含空白/中文的 release root 亦可自動 remap 後完成 native build，解除映射後 modules 與 GLB 可由原始 Unicode 路徑載入。
 
 ## P0：安全阻斷
 
@@ -71,7 +71,7 @@
   - 改善：抽出共用 run context（tee、metadata、elapsed、cleanup）；所有 exit path 原子寫入 final metadata；輸出先寫暫存檔再 rename，避免把舊檔或半成品當成功。
   - 驗收：模擬 import、pipeline init、inference、export、metadata write 失敗，log 與 JSON 均有穩定非零狀態與錯誤摘要。
 
-- [ ] **修正 clean-machine release/setup 流程**
+- [x] **修正 clean-machine release/setup 流程**
   - 位置：`scripts/make_release.ps1`、`scripts/setup_hy3d_python.ps1`、`scripts/download_hy3d_models.ps1`
   - 證據：
     - `make_release.ps1` 直接 `cmake --build build`，全新 checkout 尚未 configure 時會失敗。
@@ -79,7 +79,7 @@
     - 產出的 `README_RELEASE.md` 宣稱 setup 會下載 official source/model files，與腳本行為不一致。
   - 改善：release 腳本先 configure；明確下載／要求 pinned source revision；依序取得 source → 建 venv → 安裝依賴 → build extensions → 下載 models → smoke test。
   - 驗收：在乾淨暫存目錄由 release zip 開始，依 README 的四個命令可完成 package verification、setup、shape smoke、texture smoke。
-  - 最新實跑：下載器支援 user-local `uvx`、舊版 `huggingface-cli` 的單一 `--include` pattern list；revision-guarded/idempotent patcher 自動修正 freshly cloned rasterizer。ASCII 路徑的 clean release 已完成 extension build、shape（219.52 秒）與 texture（1325.40 秒），輸出由獨立 parser 驗證。非 ASCII native build 仍失敗，因此維持未勾選。
+  - 最新實跑：下載器支援 user-local `uvx`、舊版 `huggingface-cli` 的單一 `--include` pattern list；revision-guarded/idempotent patcher 自動修正 freshly cloned rasterizer。clean release 已完成 shape（219.52 秒）與 texture（1325.40 秒）；中文 root 以臨時 `subst` ASCII drive 重建兩個 extensions 成功，解除映射後 native modules 與兩個 GLB 均由原始 Unicode 路徑載入通過。
 
 - [x] **鎖定依賴與下載來源**
   - 位置：`scripts/setup_hy3d_python.ps1`、`scripts/download_hy3d_models.ps1`

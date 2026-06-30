@@ -6,7 +6,8 @@ param(
     [string] $MsvcRoot,
     [string] $WindowsSdkVersion,
     [string] $CudaArchitecture = "8.6",
-    [string] $UvPath
+    [string] $UvPath,
+    [switch] $SkipUnicodeRemap
 )
 
 $ErrorActionPreference = "Stop"
@@ -14,6 +15,47 @@ $ErrorActionPreference = "Stop"
 
 $PythonPath = (Resolve-Path -LiteralPath $PythonPath).Path
 $SourceRoot = (Resolve-Path -LiteralPath $SourceRoot).Path
+if (-not $SkipUnicodeRemap -and
+    (-not (Test-Hy3dAsciiPath $PythonPath) -or -not (Test-Hy3dAsciiPath $SourceRoot))) {
+    $commonRoot = Get-Hy3dCommonPath $PythonPath $SourceRoot
+    $driveName = $null
+    foreach ($codePoint in 90..82) {
+        $candidate = [char] $codePoint
+        if (-not (Get-PSDrive -Name $candidate -ErrorAction SilentlyContinue)) {
+            $driveName = "${candidate}:"
+            break
+        }
+    }
+    if (-not $driveName) {
+        throw "no free drive letter is available for Unicode build path remapping"
+    }
+
+    & subst.exe $driveName $commonRoot
+    if ($LASTEXITCODE -ne 0) {
+        throw "failed to map Unicode build root '$commonRoot' to $driveName"
+    }
+    try {
+        $mappedRoot = "$driveName\"
+        $mappedPython = ConvertTo-Hy3dMappedPath -Path $PythonPath -SourceRoot $commonRoot -MappedRoot $mappedRoot
+        $mappedSource = ConvertTo-Hy3dMappedPath -Path $SourceRoot -SourceRoot $commonRoot -MappedRoot $mappedRoot
+        $innerArguments = @{
+            PythonPath = $mappedPython
+            SourceRoot = $mappedSource
+            SourceRevision = $SourceRevision
+            CudaArchitecture = $CudaArchitecture
+            SkipUnicodeRemap = $true
+        }
+        if ($CudaRoot) { $innerArguments.CudaRoot = $CudaRoot }
+        if ($MsvcRoot) { $innerArguments.MsvcRoot = $MsvcRoot }
+        if ($WindowsSdkVersion) { $innerArguments.WindowsSdkVersion = $WindowsSdkVersion }
+        if ($UvPath) { $innerArguments.UvPath = $UvPath }
+        Write-Host "Unicode build root remapped: $commonRoot -> $driveName"
+        & $PSCommandPath @innerArguments
+    } finally {
+        & subst.exe $driveName /D | Out-Null
+    }
+    return
+}
 if (-not $UvPath) {
     $uvCommand = Get-Command uv -ErrorAction SilentlyContinue
     $UvPath = if ($uvCommand) { $uvCommand.Source } else { Join-Path $env:USERPROFILE ".local\bin\uv.exe" }
@@ -57,7 +99,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $customRasterizer = Join-Path $SourceRoot "hy3dpaint\custom_rasterizer"
-& $UvPath pip install --python $PythonPath --no-build-isolation -e $customRasterizer
+& $UvPath pip install --python $PythonPath --no-build-isolation --reinstall $customRasterizer
 if ($LASTEXITCODE -ne 0) {
     throw "failed to build custom_rasterizer"
 }

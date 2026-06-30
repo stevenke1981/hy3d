@@ -40,14 +40,14 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 | 組態／Gate | 結果 |
 |---|---:|
 | Debug build | 通過，所有 first-party targets 使用 `/W4 /permissive-` |
-| Debug 非 slow CTest | 25/25 通過，13.75 秒 |
+| Debug 非 slow CTest | 25/25 通過，7.25 秒 |
 | Release build | 通過 |
-| Release 非 slow CTest | 25/25 通過，6.36 秒 |
-| Clean release test | 1/1 通過，22.08 秒（clean configure/build、zip、Unicode path extraction、27-file SHA-256、outside-cwd executable smoke；另拒絕未列與遭修改檔案） |
+| Release 非 slow CTest | 25/25 通過，5.73 秒 |
+| Clean release test | 1/1 通過，19.59 秒（clean configure/build、zip、Unicode path extraction、27-file SHA-256、outside-cwd executable smoke；另拒絕未列與遭修改檔案） |
 
 新增覆蓋：嚴格／bounded numeric parser、各 subcommand parser/handler、Python preflight/import/export/metadata-write failure、format-preserving partial output、136-package resolved lock、installed manifest、四類 NumPy parity、tensor lookup/真實 GGUF loader benchmark，以及 clean release runtime-helper closure、zip extraction、完整 manifest coverage 與 executable smoke。
 
-全新 release zip 已完成 pinned source/model、136-package venv、revision-guarded rasterizer patch、Windows extensions 與 CUDA shape/texture。ASCII 路徑成功；含中文路徑的 PyTorch/Ninja extension build 仍有亂碼限制。
+全新 release zip 已完成 pinned source/model、136-package venv、revision-guarded rasterizer patch、Windows extensions 與 CUDA shape/texture。含中文 root 透過自動 `subst` remap 成功編譯；移除 mapping 後 native modules 與 GLB 仍可由 Unicode 路徑載入。
 
 ### 2026-06-30 真實 CUDA/model 驗收
 
@@ -63,6 +63,7 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 | Paint extension rebuild | CUDA 12.1 + compatible MSVC 14.29 通過；MSVC 14.51 的 `cudafe++` crash 有 resolver regression |
 | Clean release shape | 通過，219.52 秒，11,250,604 bytes；312,722 vertices / 624,760 faces |
 | Clean release texture | 通過，1325.40 秒，17,695,556 bytes；PBRMaterial、474,770 vertices / 624,760 faces |
+| Unicode-root extension rebuild | 通過，103.8 秒；temporary `Z:` mapping 清除後兩個 native modules 可載入 |
 
 首次 shape 實跑曾在完成 diffusion/volume decode 後揭露 `output.glb.partial` 被 exporter 誤判為 `.partial` 格式；修正為 `output.partial.glb` 並加入 regression test 後，shape 與 texture 皆以同一原子輸出流程完成。
 
@@ -76,7 +77,7 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 | Runtime | NumPy attention/conditioned/timestep/final parity、真實 GGUF load/RSS/block forward | 完整官方 end-to-end native graph parity（native backend 尚未完成） |
 | Converter | writer metadata/tensor、name mapping、safe default/unsafe opt-in | 重複名稱、部分輸出清理、大模型 peak RSS |
 | Python pipelines | preflight、import/export/metadata write failure、原子輸出、真實 CUDA shape/texture | constructor/inference fault injection 的更多細粒度 cases |
-| Release/setup | clean configure/build/package、Unicode 結構驗證、線上 pinned source/model、fresh venv、patched extensions、ASCII-path CUDA shape/texture | 非 ASCII 路徑 native extension build |
+| Release/setup | clean configure/build/package、Unicode 結構驗證、線上 pinned source/model、fresh venv、patched extensions、Unicode-root remap、CUDA shape/texture | nightly 從零重跑以監測上游工具鏈漂移 |
 
 ## 3. P0/P1 自動測試
 
@@ -216,7 +217,7 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 6. 逐項驗證 `SHA256SUMS.txt` 使用 package-relative path、沒有重複/越界/未列檔案，且 hash 全部正確。
 7. 從 release root 以外 cwd 執行 `bin\hy3d.exe`。
 
-任何未宣告的本機全域依賴、硬編碼 VS/CUDA/Python 路徑或缺失 source checkout，都視為 release gate 失敗。
+任何未宣告的本機全域依賴、硬編碼 VS/CUDA/Python 路徑、殘留 subst mapping 或缺失 source checkout，都視為 release gate 失敗。
 
 ## 6. CI 建議
 

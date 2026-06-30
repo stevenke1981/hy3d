@@ -1,3 +1,62 @@
+function Test-Hy3dAsciiPath {
+    param([Parameter(Mandatory = $true)][string] $Path)
+
+    foreach ($character in $Path.ToCharArray()) {
+        if ([int] $character -gt 127) {
+            return $false
+        }
+    }
+    return $true
+}
+
+function Get-Hy3dCommonPath {
+    param(
+        [Parameter(Mandatory = $true, Position = 0)][string] $PathA,
+        [Parameter(Mandatory = $true, Position = 1)][string] $PathB
+    )
+
+    $fullA = [System.IO.Path]::GetFullPath($PathA)
+    $fullB = [System.IO.Path]::GetFullPath($PathB)
+    $rootA = [System.IO.Path]::GetPathRoot($fullA)
+    $rootB = [System.IO.Path]::GetPathRoot($fullB)
+    if ($rootA -ine $rootB) {
+        throw "paths do not share a drive root: '$fullA' and '$fullB'"
+    }
+    $segmentsA = $fullA.Substring($rootA.Length).Split("\", [System.StringSplitOptions]::RemoveEmptyEntries)
+    $segmentsB = $fullB.Substring($rootB.Length).Split("\", [System.StringSplitOptions]::RemoveEmptyEntries)
+    $shared = New-Object System.Collections.Generic.List[string]
+    for ($index = 0; $index -lt [Math]::Min($segmentsA.Count, $segmentsB.Count); ++$index) {
+        if ($segmentsA[$index] -ine $segmentsB[$index]) {
+            break
+        }
+        $shared.Add($segmentsA[$index])
+    }
+    if ($shared.Count -eq 0) {
+        return $rootA.TrimEnd("\")
+    }
+    return Join-Path $rootA ($shared -join "\")
+}
+
+function ConvertTo-Hy3dMappedPath {
+    param(
+        [Parameter(Mandatory = $true)][string] $Path,
+        [Parameter(Mandatory = $true)][string] $SourceRoot,
+        [Parameter(Mandatory = $true)][string] $MappedRoot
+    )
+
+    $fullPath = [System.IO.Path]::GetFullPath($Path)
+    $fullSource = [System.IO.Path]::GetFullPath($SourceRoot).TrimEnd("\")
+    if ($fullPath -ine $fullSource -and
+        -not $fullPath.StartsWith($fullSource + "\", [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "path is outside mapped source root: $fullPath"
+    }
+    $relative = $fullPath.Substring($fullSource.Length).TrimStart("\")
+    if (-not $relative) {
+        return $MappedRoot.TrimEnd("\")
+    }
+    return $MappedRoot.TrimEnd("\") + "\" + $relative
+}
+
 function Get-Hy3dVersion {
     param([Parameter(Mandatory = $true)][string] $Name)
 

@@ -12,6 +12,31 @@ if ($buildScript -notmatch [regex]::Escape("patch_hy3dpaint_windows.py") -or
     $buildScript -notmatch '\[string\]\s*\$SourceRevision') {
     throw "extension build does not apply the revision-guarded Windows source patch"
 }
+if (-not (Test-Hy3dAsciiPath "D:\hy3d release") -or
+    (Test-Hy3dAsciiPath "D:\hy3d 驗收")) {
+    throw "ASCII path detection is incorrect"
+}
+$common = Get-Hy3dCommonPath `
+    "D:\hy3d 驗收\.venv-hy3d\Scripts\python.exe" `
+    "D:\hy3d 驗收\third_party\Hunyuan3D-2.1"
+if ($common -ne "D:\hy3d 驗收") {
+    throw "common Unicode release root is incorrect: $common"
+}
+$mapped = ConvertTo-Hy3dMappedPath `
+    -Path "D:\hy3d 驗收\.venv-hy3d\Scripts\python.exe" `
+    -SourceRoot $common `
+    -MappedRoot "Z:\"
+if ($mapped -ne "Z:\.venv-hy3d\Scripts\python.exe") {
+    throw "mapped Python path is incorrect: $mapped"
+}
+if ($buildScript -notmatch [regex]::Escape("subst.exe") -or
+    $buildScript -notmatch '\[switch\]\s*\$SkipUnicodeRemap') {
+    throw "extension build does not remap Unicode roots to an ASCII drive"
+}
+if ($buildScript -notmatch [regex]::Escape("--reinstall") -or
+    $buildScript -match '--no-build-isolation\s+-e\s+') {
+    throw "custom rasterizer must be installed non-editably for temporary drive mappings"
+}
 
 $root = Join-Path ([System.IO.Path]::GetTempPath()) ("hy3d-toolchain-" + [guid]::NewGuid())
 try {

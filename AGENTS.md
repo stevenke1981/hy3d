@@ -73,9 +73,10 @@ JSON sidecars; file existence alone is not acceptance.
 
 The pinned upstream custom-rasterizer patch is applied by
 `patch_hy3dpaint_windows.py`; preserve its revision guard and idempotency.
-Current remaining release limitation: PyTorch/Ninja corrupts non-ASCII paths
-while compiling native extensions. Structural release tests use Unicode, but
-online setup/CUDA acceptance must currently run from an ASCII-only path.
+For non-ASCII roots, `build_hy3dpaint_windows.ps1` temporarily maps the common
+source/venv root with `subst.exe`, re-enters once through
+`-SkipUnicodeRemap`, installs the rasterizer non-editably, and always removes
+the mapping in `finally`. Preserve all four parts of this contract.
 
 Before completion, parse changed PowerShell/Python files, run
 `git diff --check`, inspect `git status`, and report exact commands and

@@ -43,10 +43,10 @@ backend.
 Large models, generated outputs, build trees, and virtual environments are
 local artifacts and must not be committed.
 
-Clean online setup, shape, and texture smoke are verified. Extract to a path
-containing only ASCII characters before running setup: PyTorch/Ninja's Windows
-native-extension toolchain still corrupts non-ASCII source paths. Unicode
-paths remain covered for zip extraction, hash verification, and CLI startup.
+Clean online setup, shape, and texture smoke are verified, including a release
+root containing spaces and Chinese characters. Native-extension builds
+automatically map the shared release root to a temporary ASCII drive letter;
+the mapping is removed after the build.
 
 ## Quick Start for Humans
 
@@ -111,8 +111,9 @@ or package-escaping manifest paths. It also runs `bin\hy3d.exe --help` from a
 temporary working directory outside the package. This structural check does
 not download models or perform CUDA inference.
 
-For the setup and CUDA commands, move the verified package to an ASCII-only
-path such as `D:\hy3d-release` if the extraction path contains non-ASCII text.
+Do not manually remove a temporary drive mapping while setup is running.
+`build_hy3dpaint_windows.ps1` owns its mapping lifecycle and installs the
+custom rasterizer non-editably so runtime imports do not depend on that drive.
 
 For a mostly offline package from an already prepared checkout:
 
