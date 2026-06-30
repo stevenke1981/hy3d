@@ -40,14 +40,14 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 | 組態／Gate | 結果 |
 |---|---:|
 | Debug build | 通過，所有 first-party targets 使用 `/W4 /permissive-` |
-| Debug 非 slow CTest | 15/15 通過，3.37 秒 |
+| Debug 非 slow CTest | 21/21 通過，5.28 秒 |
 | Release build | 通過 |
-| Release 非 slow CTest | 15/15 通過，3.69 秒 |
-| Clean release test | 1/1 通過，16.50 秒 |
+| Release 非 slow CTest | 21/21 通過，3.27 秒 |
+| Clean release test | 1/1 通過，18.10 秒 |
 
-新增覆蓋：child process argv round-trip/launch failure、backend path、wrapper missing-backend、惡意 GGUF corpus、`Result::take_value()`、pinned local source checkout、safe checkpoint load、generate/texture export failure與原子輸出、clean release configure/package。
+新增覆蓋：child process argv round-trip/launch failure、backend path、wrapper missing-backend、惡意 GGUF corpus、`Result::take_value()`、pinned local source checkout、safe checkpoint load、generate/texture export failure與原子輸出、共用 run lifecycle、依賴鎖、toolchain resolver、command handler、NumPy attention parity、tensor lookup benchmark、clean release configure/package。
 
-仍未執行：真實 CUDA shape/texture、完整線上 release setup、真實模型 native parity、loader peak RSS/時間 benchmark。
+仍未執行：本輪重新執行真實 CUDA shape/texture、完整線上 release setup、真實模型 native parity、loader peak RSS/時間 benchmark。既有 README 中的歷史 GPU smoke 紀錄不視為本輪驗收。
 
 ## 2. 現有覆蓋與缺口
 

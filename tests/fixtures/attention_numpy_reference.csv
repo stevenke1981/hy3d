@@ -1,0 +1,5 @@
+# Generated with NumPy float64 softmax; rows are name followed by flattened values.
+q,1,0,0,1
+k,1,0,0,1
+v,10,20,30,40
+expected,16.604768993,26.604768993,23.395231007,33.395231007

@@ -1,31 +1,30 @@
 param(
     [string] $PythonPath = ".\.venv-hy3d\Scripts\python.exe",
     [string] $SourceRoot = ".\third_party\Hunyuan3D-2.1",
-    [string] $CudaRoot = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.1",
-    [string] $MsvcRoot = "C:\Program Files (x86)\Microsoft Visual Studio\18\BuildTools\VC\Tools\MSVC\14.29.30133",
-    [string] $WindowsSdkVersion = "10.0.26100.0"
+    [string] $CudaRoot,
+    [string] $MsvcRoot,
+    [string] $WindowsSdkVersion,
+    [string] $CudaArchitecture = "8.6"
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "hy3d_toolchain.ps1")
 
 $PythonPath = (Resolve-Path -LiteralPath $PythonPath).Path
 $SourceRoot = (Resolve-Path -LiteralPath $SourceRoot).Path
-$sdkRoot = "C:\Program Files (x86)\Windows Kits\10"
-
-if (-not (Test-Path -LiteralPath $CudaRoot)) {
-    throw "CUDA toolkit not found: $CudaRoot"
-}
-if (-not (Test-Path -LiteralPath $MsvcRoot)) {
-    throw "MSVC toolset not found: $MsvcRoot"
-}
-if (-not (Test-Path -LiteralPath (Join-Path $sdkRoot "Include\$WindowsSdkVersion"))) {
-    throw "Windows SDK not found: $sdkRoot\Include\$WindowsSdkVersion"
-}
+$cudaBase = "${env:ProgramFiles}\NVIDIA GPU Computing Toolkit\CUDA"
+$cudaExplicit = if ($CudaRoot) { $CudaRoot } elseif ($env:CUDA_PATH) { $env:CUDA_PATH } else { $null }
+$CudaRoot = Resolve-Hy3dCudaRoot -ExplicitPath $cudaExplicit -BasePath $cudaBase
+$msvcBase = if ($MsvcRoot) { $null } else { Find-Hy3dMsvcBase }
+$MsvcRoot = Resolve-Hy3dVersionedRoot -ExplicitPath $MsvcRoot -BasePath $msvcBase -RequiredRelativePath "bin\HostX64\x64\cl.exe" -Kind "MSVC"
+$sdk = Resolve-Hy3dWindowsSdk -ExplicitVersion $WindowsSdkVersion
+$sdkRoot = $sdk.Root
+$WindowsSdkVersion = $sdk.Version
 
 $env:DISTUTILS_USE_SDK = "1"
 $env:CUDA_HOME = $CudaRoot
 $env:CUDA_PATH = $CudaRoot
-$env:TORCH_CUDA_ARCH_LIST = "8.6"
+$env:TORCH_CUDA_ARCH_LIST = $CudaArchitecture
 $env:MAX_JOBS = "1"
 $env:PATH = "$CudaRoot\bin;$MsvcRoot\bin\HostX64\x64;$sdkRoot\bin\$WindowsSdkVersion\x64;$env:PATH"
 $env:INCLUDE = "$MsvcRoot\include;$sdkRoot\Include\$WindowsSdkVersion\ucrt;$sdkRoot\Include\$WindowsSdkVersion\um;$sdkRoot\Include\$WindowsSdkVersion\shared;$sdkRoot\Include\$WindowsSdkVersion\winrt;$sdkRoot\Include\$WindowsSdkVersion\cppwinrt"
@@ -37,10 +36,20 @@ uv pip install --python $PythonPath --no-build-isolation -e $customRasterizer
 $renderer = Join-Path $SourceRoot "hy3dpaint\DifferentiableRenderer"
 $configJson = & $PythonPath -c "import json, pathlib, pybind11, sys, sysconfig; print(json.dumps({'ext': sysconfig.get_config_var('EXT_SUFFIX'), 'py_include': sysconfig.get_paths()['include'], 'py_lib': str(pathlib.Path(sys.base_prefix) / 'libs'), 'pybind11_include': pybind11.get_include()}))"
 $config = $configJson | ConvertFrom-Json
+$pythonLibrary = & $PythonPath -c "import sysconfig; print(sysconfig.get_config_var('LDLIBRARY') or '')"
+if (-not $pythonLibrary) {
+    $pythonLibrary = & $PythonPath -c "import sys; print(f'python{sys.version_info.major}{sys.version_info.minor}.lib')"
+}
+
+Write-Host "Hunyuan3D toolchain:"
+Write-Host "  CUDA:  $CudaRoot (arch $CudaArchitecture)"
+Write-Host "  MSVC:  $MsvcRoot"
+Write-Host "  SDK:   $sdkRoot ($WindowsSdkVersion)"
+Write-Host "  Python: $PythonPath ($pythonLibrary)"
 
 Push-Location $renderer
 try {
-    cl /utf-8 /O2 /LD /EHsc /std:c++17 mesh_inpaint_processor.cpp /I"$($config.py_include)" /I"$($config.pybind11_include)" /link /LIBPATH:"$($config.py_lib)" python310.lib /OUT:"mesh_inpaint_processor$($config.ext)"
+    cl /utf-8 /O2 /LD /EHsc /std:c++17 mesh_inpaint_processor.cpp /I"$($config.py_include)" /I"$($config.pybind11_include)" /link /LIBPATH:"$($config.py_lib)" $pythonLibrary /OUT:"mesh_inpaint_processor$($config.ext)"
     if ($LASTEXITCODE -ne 0) {
         throw "failed to build mesh_inpaint_processor"
     }

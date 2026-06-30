@@ -2,13 +2,13 @@
 
 > 檢視日期：2026-06-30
 >
-> 方法：CBM 專案索引 `cbrlm+hunyuan`（42 files / 243 symbols / 415 edges）、關鍵符號與呼叫路徑檢視、Debug/Release 實際建置與 CTest。
+> 方法：CBM 專案索引 `cbm+hunyuan`（51 files / 263 symbols / 592 edges）、關鍵符號與呼叫路徑檢視、Debug/Release 實際建置與 CTest。
 >
 > 原則：先處理安全與錯誤成功，再做大型模型的 I/O／查找優化，最後拆分結構與補齊工程化。
 
 ## 2026-06-30 實作狀態
 
-已完成 8 項：P0 全部、GGUF 邊界、單次開檔/hash index/move、backend 定位、wrapper 失敗語意、Python sidecar/原子輸出、Windows CI。其餘未勾選項目保留為下一批，部分已有進度註記；未因測試通過而假定 CUDA 真實模型或 clean-machine 線上安裝已驗收。
+已完成 10 項：原有 8 項，加上 Windows toolchain 自動探測及 clang-tidy/sanitizer 品質閘門。CLI dispatcher、Python lifecycle、依賴清單、benchmark/parity 已有可驗收進展；未因核心測試通過而假定 CUDA 真實模型或 clean-machine 線上安裝已驗收。
 
 ## P0：安全阻斷
 
@@ -86,7 +86,7 @@
   - 證據：`pillow`、`pythreejs`、`uvx --from huggingface-hub` 未鎖版；Hugging Face download 未指定 revision；RealESRGAN 下載未驗證 checksum。
   - 改善：建立可審查 lock/constraints；model/source 固定 revision；小型二進位資產驗 SHA-256；metadata 記錄實際 revision 與依賴版本。
   - 驗收：同一 release manifest 可重建相同依賴集合，下載內容不符 hash 時立即失敗。
-  - 進度：source/model revision、uvx 版本、RealESRGAN SHA-256、Pillow、pythreejs 已鎖定；完整 Python lock/constraints 仍待建立。
+  - 進度：新增 `requirements-hy3d.lock.txt` 與 `requirements-torch-cu124.lock.txt`，所有直接依賴皆精確鎖版且 setup 只讀取清單；source/model revision、uvx 與 RealESRGAN SHA-256 亦已固定。完整 transitive lock 與安裝後版本 manifest 仍待補。
 
 - [x] **建立 Windows CI 與負向安全測試**
   - 位置：新增 `.github/workflows/ci.yml`（或專案既有 CI 平台）
@@ -99,29 +99,33 @@
   - 位置：`src/hy3d_cli.cpp:78-632`、`src/main.cpp:38-310`
   - 改善：每個 subcommand 有獨立 parser/validator/handler；共用 bounded numeric parser；`main()` 只負責 dispatch 與 exit-code mapping。
   - 驗收：現有 CLI 行為與 help 相容；每個 subcommand 可獨立單元測試；移除重複 `try/stoi` 區塊。
+  - 進度：`main()` 已縮成 argv parse、錯誤映射與 `run_command()` dispatch，執行邏輯移至 `hy3d_commands.cpp` 並有直接單元測試；每個 subcommand handler 與重複 numeric parser 尚待再拆。
 
 - [ ] **拆分 Python pipeline orchestration**
   - 位置：`scripts/hy3d_generate.py`、`scripts/hy3d_texture.py`
   - 改善：把參數解析、環境探測、pipeline 建立、推論、輸出提交、metadata 分成小函式；共用 logging/sidecar 模組。
   - 驗收：不載入 torch/CUDA 即可測輸入驗證與錯誤 metadata；generate/texture 錯誤格式一致。
+  - 進度：共用 `RunContext` 已集中 tee、elapsed、stream cleanup 與原子 metadata commit，且可不載入 torch/CUDA 單測；pipeline 建立／推論函式仍待進一步抽離。
 
-- [ ] **自動探測 Windows toolchain**
+- [x] **自動探測 Windows toolchain**
   - 位置：`scripts/build_hy3dpaint_windows.ps1`
   - 證據：CUDA 12.1、VS 18 路徑、MSVC 14.29、Windows SDK 10.0.26100.0、`python310.lib`、GPU arch 8.6 均硬編碼。
   - 改善：使用 `vswhere`、Python `sysconfig`、CUDA env/CMake 探測；GPU arch 允許參數化；輸出探測摘要。
   - 驗收：至少兩個已支援 VS/CUDA/Python 組合可重現建置；不支援組合給出具體診斷。
+  - 本輪驗收：resolver fixture 驗證多版本選擇、明確 override、無效路徑診斷及 `CUDA_PATH` 指向 `bin` 的正規化；實機解析 CUDA 12.1、MSVC 14.51.36231、SDK 10.0.26100.0，Python import library 由 `sysconfig` 取得，GPU arch 可參數化。
 
 - [ ] **補齊效能基準與 native parity gate**
   - 位置：新增 `benchmarks/`、測試 fixture 與文件
   - 改善：量測 GGUF inspect/load、tensor lookup、單 block forward；以 Python/reference fixture 比對 shape、有限值、誤差、checksum。
   - 驗收：優化 PR 附 before/after；native 功能不可只以「程式有跑完」作為完成標準。
+  - 進度：新增 20,000 tensors / 1,000,000 lookups deterministic benchmark（Release 0.15 秒）及 NumPy attention reference fixture（finite + `1e-5` 誤差）；真實 GGUF inspect/load、peak RSS、block forward 與官方模型 parity 仍待補。
 
-- [ ] **將警告／靜態分析套用到所有 first-party targets**
+- [x] **將警告／靜態分析套用到所有 first-party targets**
   - 位置：`CMakeLists.txt`
   - 證據：`/W4` 或 `-Wall -Wextra -Wpedantic` 目前只套用 `hy3d_core`，未涵蓋 `hy3d` 與 tests。
   - 改善：建立共用 interface target；CI 增加 clang-tidy（先採選定規則）與可選 ASan/UBSan job。
   - 驗收：main/tests 同樣啟用警告；新增程式碼不引入警告。
-  - 進度：`/W4 /permissive-` 或 `-Wall -Wextra -Wpedantic` 已套用所有 targets；clang-tidy 與 sanitizer jobs 尚待加入。
+  - 進度：`/W4 /permissive-` 或 `-Wall -Wextra -Wpedantic` 已套用所有 targets；CMake 新增 opt-in clang-tidy、ASan/UBSan，CI 加入獨立 Linux jobs。
 
 ## 建議執行順序
 

@@ -1,0 +1,4 @@
+# PyTorch CUDA 12.4 wheel set. Installed from the official cu124 index.
+torch==2.5.1
+torchvision==0.20.1
+torchaudio==2.5.1

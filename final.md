@@ -2,9 +2,9 @@
 
 > 檢視日期：2026-06-30
 >
-> CBM project：`cbrlm+hunyuan`
+> CBM project：`cbm+hunyuan`
 >
-> 索引規模：42 files、243 symbols、415 edges（122 call edges）
+> 索引規模：51 files、263 symbols、592 edges（245 call edges）
 
 ## 結論
 
@@ -20,7 +20,7 @@ hy3d.exe
 
 同時存在一套逐步成形的 native GGUF/CPU runtime（GGUF inspect/load、tensor mapping、attention/DiT primitives、scheduler、mesh fixture），但 end-to-end native inference 仍明確未完成。現階段適合定位為「Python backend 的 Windows orchestration CLI + native runtime 原型」，不宜把 native 路徑描述成完整推論引擎。
 
-本輪已把測試由 8 個擴充到 16 個，並完成原 P0、GGUF 邊界、backend 成功語意、原子輸出、單次開檔/hash index 與 clean release build。主要剩餘風險轉為真實 CUDA/model 驗收、完整 Python lock、toolchain 自動探測、CLI/Python 結構拆分及 native parity。
+兩輪改善已把非 slow 測試由 8 個擴充到 21 個，並完成原 P0、GGUF 邊界、backend 成功語意、原子輸出、單次開檔/hash index、toolchain 探測、品質分析 gates 與 clean release build。主要剩餘風險是線上 clean-machine/CUDA 驗收、transitive Python lock、每個 CLI handler 的細拆，以及真實模型 native parity/peak RSS。
 
 ## 高優先級問題處理狀態
 
@@ -34,15 +34,15 @@ hy3d.exe
 | P1 | backend 缺失時假成功 | 已修復 | wrapper 固定非零退出並有 PowerShell regression test |
 | P1 | Python 例外 sidecar/輸出不完整 | 已修復 | generate/texture error sidecar 對齊，final output 使用 `.partial` + atomic replace，失敗保留舊輸出 |
 | P1 | release/setup 非 clean-machine 閉環 | 部分完成 | release 自行 configure/build/package，pinned source checkout 與 setup 順序已測；線上 CUDA smoke 待執行 |
-| P1 | 供應鏈未完全鎖定 | 部分完成 | source/model/uvx/Pillow/pythreejs revision 已鎖定，RealESRGAN 有 SHA-256；完整 lockfile 待補 |
+| P1 | 供應鏈未完全鎖定 | 部分完成 | source/model/uvx revision 與資產 hash 已固定；新增兩份精確直接依賴 lock，transitive lock/installed manifest 待補 |
 
 ## 主要可維護性與工程缺口
 
-- `src/hy3d_cli.cpp::parse_args()` 約 555 行，`src/main.cpp::main()` 約 272 行；command parse、validation、dispatch 與執行應拆開。
-- `hy3d_generate.py::main()` 與 `hy3d_texture.py::main()` 仍各自管理 tee、metadata、timing、cleanup；本輪已對齊錯誤與原子輸出行為，但尚未抽成共用模組。
-- `build_hy3dpaint_windows.ps1` 硬編碼 CUDA、MSVC、Windows SDK、Python 3.10 library 與 GPU architecture，難以轉移到其他已支援機器。
-- 已新增 Windows Debug/Release CI；尚缺 sanitizer/fuzzer 與真實 CUDA nightly job。
-- native runtime 的測試以小型人工 tensor 為主，尚缺官方 Python/reference 數值 parity、真實模型 fixture 與可比較 benchmark。
+- `src/hy3d_cli.cpp::parse_args()` 仍約 555 行且重複 numeric parse；`main()` 已縮為 parse + `run_command()`，下一步是每個 subcommand parser/handler。
+- generate/texture 已共用 `RunContext` 的 tee、metadata、timing 與 cleanup；重型 pipeline 建立／推論仍在各自 `main()`。
+- toolchain 已由 `vswhere`/versioned dirs、CUDA env、Windows SDK 與 Python `sysconfig` 探測，仍需在第二組實體工具鏈執行 extension build。
+- CI 已有 Windows Debug/Release、Linux ASan/UBSan 與 clang-tidy；仍缺 fuzzer 與真實 CUDA nightly job。
+- native runtime 新增 NumPy attention fixture與 tensor lookup benchmark，仍缺官方模型 fixture、load/peak RSS 與 block-forward benchmark。
 - CMake warning flags 已套用所有 first-party targets；clang-tidy/sanitizer 尚未加入。
 
 ## 正向觀察
@@ -98,11 +98,12 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 結果：
 
 - Debug build：通過。
-- Debug 非 slow CTest：15/15 通過（3.37 秒）。
+- Debug 非 slow CTest：21/21 通過（5.28 秒）。
 - Release build：通過。
-- Release 非 slow CTest：15/15 通過（3.69 秒）。
-- Clean release configure/build/package：1/1 通過（16.50 秒）。
-- CTest 包含 converter、generate、texture Python regression tests。
+- Release 非 slow CTest：21/21 通過（3.27 秒）。
+- Clean release configure/build/package：1/1 通過（18.10 秒）。
+- Release tensor lookup benchmark：1,000,000 次查找 0.15 秒。
+- Python `py_compile`、toolchain 實機探測與 `git diff --check` 通過。
 
 未執行：
 
@@ -115,4 +116,4 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 
 ## 工作區注意事項
 
-工作區原有未提交的 Blender 資產與 `scripts/patch_myarstudio_glbfix_blend.py`；本輪未修改它們。CBM 索引檔仍有生成更新；本輪的原始碼、測試、CI、腳本與三份審查文件均尚未提交。
+`.opencode/memory.db*` 是本機執行期資料，刻意排除於本次提交。其餘本輪原始碼、測試、CI、腳本與三份審查文件將在驗收後提交。

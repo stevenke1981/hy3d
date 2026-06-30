@@ -8,11 +8,15 @@ CLI can produce a usable GLB while the native C++ runtime is still being built.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import pathlib
 import sys
-import time
+
+SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from hy3d_run_context import RunContext, sidecar_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -58,34 +62,8 @@ def add_source_paths(source_root: pathlib.Path) -> None:
         sys.path.insert(0, str(hy3dpaint_root))
 
 
-class Tee:
-    def __init__(self, stream, log_file) -> None:
-        self.stream = stream
-        self.log_file = log_file
-
-    def write(self, data: str) -> int:
-        self.stream.write(data)
-        written = self.log_file.write(data)
-        self.flush()
-        return written
-
-    def flush(self) -> None:
-        self.stream.flush()
-        self.log_file.flush()
-
-
-def sidecar_path(output_path: pathlib.Path, suffix: str) -> pathlib.Path:
-    return pathlib.Path(str(output_path) + suffix)
-
-
-def write_metadata(path: pathlib.Path, metadata: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(metadata, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-
-
 def main() -> int:
     args = parse_args()
-    started = time.perf_counter()
 
     image_path = pathlib.Path(args.image).resolve()
     output_path = pathlib.Path(args.out).resolve()
@@ -94,14 +72,6 @@ def main() -> int:
     log_path = pathlib.Path(args.log).resolve() if args.log else sidecar_path(output_path, ".log.txt")
     metadata_path = pathlib.Path(args.metadata).resolve() if args.metadata else sidecar_path(output_path, ".json")
     partial_output_path = pathlib.Path(str(output_path) + ".partial")
-
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    log_file = log_path.open("w", encoding="utf-8")
-    stdout = sys.stdout
-    stderr = sys.stderr
-    sys.stdout = Tee(stdout, log_file)
-    sys.stderr = Tee(stderr, log_file)
 
     metadata = {
         "command": "generate",
@@ -122,18 +92,9 @@ def main() -> int:
         "log": str(log_path),
     }
 
-    def finish(status: str, code: int, error: str = "") -> int:
-        elapsed = time.perf_counter() - started
-        metadata["status"] = status
-        metadata["exit_code"] = code
-        metadata["elapsed_seconds"] = round(elapsed, 3)
-        if error:
-            metadata["error"] = error
-        if status == "ok" and output_path.exists():
-            metadata["output_size"] = output_path.stat().st_size
-        write_metadata(metadata_path, metadata)
-        print(f"metadata: {metadata_path}")
-        return code
+    run = RunContext(output_path, log_path, metadata_path, metadata)
+    run.__enter__()
+    finish = run.finish
 
     try:
         if not image_path.exists():
@@ -225,7 +186,7 @@ def main() -> int:
             raise RuntimeError(f"mesh exporter did not produce a valid file: {partial_output_path}")
         partial_output_path.replace(output_path)
 
-        elapsed = time.perf_counter() - started
+        elapsed = run.elapsed_seconds()
         print(f"done: {output_path}")
         print(f"elapsed_seconds: {elapsed:.2f}")
         return finish("ok", 0)
@@ -235,9 +196,7 @@ def main() -> int:
         print(f"error: {message}", file=sys.stderr)
         return finish("error", 99, message)
     finally:
-        sys.stdout = stdout
-        sys.stderr = stderr
-        log_file.close()
+        run.close()
 
 
 if __name__ == "__main__":

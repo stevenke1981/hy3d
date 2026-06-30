@@ -291,10 +291,20 @@ First-time setup:
 .\scripts\setup_hy3d_python.ps1
 ```
 
+The setup script installs the exact direct versions reviewed in
+`requirements-torch-cu124.lock.txt` and `requirements-hy3d.lock.txt`.
+
 If the Hunyuan3D-Paint native extensions need to be rebuilt:
 
 ```powershell
 .\scripts\build_hy3dpaint_windows.ps1
+```
+
+The build script detects CUDA, Visual Studio C++ tools, the Windows SDK, and
+the Python import library. Override a detected value when needed, for example:
+
+```powershell
+.\scripts\build_hy3dpaint_windows.ps1 -CudaRoot "C:\CUDA\v12.4" -CudaArchitecture "8.6"
 ```
 
 The verified smoke output is `outputs\hy3d-cli-smoke-5.glb`, about 11 MB, and loads as a GLB scene with one geometry. A 5-step run took about 210 seconds on the RTX 3070 Ti.
