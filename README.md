@@ -1,33 +1,110 @@
-# Hunyuan3D GGUF C++ CLI
+# Hunyuan3D Windows CLI
 
-Windows-native C++ CLI shell for local Hunyuan3D workflows.
+Windows-native C++17 command-line tooling for local Hunyuan3D shape and PBR
+texture workflows.
 
-This first version provides:
+The production path is the C++ CLI calling the pinned official Python/CUDA
+backend. The native GGUF runtime can inspect/load tensors and run verified DiT
+primitive/block smoke paths, but it is not yet an end-to-end image-to-3D
+backend.
 
-- CLI parsing and help
-- GGUF inspection
-- Python backend bridge
-- Shape generation through official CUDA PyTorch backend
-- PBR texture generation through official Hunyuan3D-Paint backend
-- Initial native GGUF tensor loading and DiT block forward smoke path
+## Choose Your Path
 
-## Build
+| Goal | Start here |
+|---|---|
+| Generate a GLB from an image | [Quick Start](#quick-start-for-humans) |
+| Build or test the C++ project | [Developer Build](#developer-build) |
+| Create or verify a Windows release | [Windows Release](#windows-release) |
+| Continue implementation as an agent | [`AGENTS.md`](AGENTS.md), then [`todos.md`](todos.md) |
+| Review acceptance evidence | [`test.md`](test.md) and [`final.md`](final.md) |
+
+## Current Status
+
+- Verified on Windows with an RTX 3070 Ti: CUDA shape generation and
+  Hunyuan3D-Paint texture generation.
+- Core Debug and Release suites: 24/24 non-slow tests passing.
+- Release packaging: clean configure/build, zip extraction to a Unicode path,
+  package-wide SHA-256 verification, and executable smoke are automated.
+- Remaining release gate: run online source/model download, fresh virtual
+  environment setup, shape smoke, and texture smoke starting only from a newly
+  extracted release zip.
+- Source and model downloads are pinned. The resolved Windows/Python
+  3.10/CUDA 12.4 lock contains 136 packages.
+
+## Prerequisites
+
+- Windows 10 or newer.
+- CMake and Visual Studio C++ Build Tools.
+- NVIDIA driver and a supported CUDA toolkit for GPU generation.
+- Python 3.10 for the official backend. The setup script creates
+  `.venv-hy3d`.
+- Git and network access for first-time source/model setup.
+
+Large models, generated outputs, build trees, and virtual environments are
+local artifacts and must not be committed.
+
+## Quick Start for Humans
+
+From PowerShell:
+
+```powershell
+.\scripts\download_hy3d_models.ps1
+.\scripts\setup_hy3d_python.ps1
+
+.\scripts\generate_3d_model.ps1 `
+  -ImagePath "C:\path\to\input.png" `
+  -OutputPath .\outputs\character.glb `
+  -Quality character-normal `
+  -Seed 42
+```
+
+Add `-Texture` to run Hunyuan3D-Paint after shape generation. Every backend
+run writes a `.log.txt` and `.json` sidecar next to the GLB. Start with
+`-Quality smoke` when checking a new machine.
+
+Do not use `--low-vram` for the official Python backend on this checkout. The
+upstream offload path currently mixes CPU and CUDA scheduler tensors.
+
+## Developer Build
 
 ```powershell
 cmake -S . -B build
-cmake --build build --config Release
-ctest --test-dir build --output-on-failure
+cmake --build build --config Debug --parallel
+ctest --test-dir build -C Debug -LE slow --output-on-failure
+cmake --build build --config Release --parallel
+ctest --test-dir build -C Release -LE slow --output-on-failure
 ```
 
-## One-Click Windows Release
-
-Create a redistributable Windows CUDA folder:
+Run the slower release-package gate separately:
 
 ```powershell
-.\scripts\make_release.ps1
+ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
+```
+
+## Windows Release
+
+Create both a redistributable Windows CUDA folder and zip:
+
+```powershell
+.\scripts\make_release.ps1 -Zip
 ```
 
 The output is `dist\hy3d-win-cuda`. It contains `hy3d-setup.cmd`, `hy3d-generate-smoke.cmd`, `hy3d-texture-smoke.cmd`, and `hy3d.cmd`. Setup downloads the pinned Hunyuan3D source/model revisions, installs the Python backend, verifies the RealESRGAN checkpoint hash, and builds the Hunyuan3D-Paint Windows extensions. The release script configures its build directory automatically.
+
+After extracting the zip, verify its complete contents before setup:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
+  .\scripts\verify_release.ps1
+.\hy3d-setup.cmd
+.\hy3d-generate-smoke.cmd
+.\hy3d-texture-smoke.cmd
+```
+
+`verify_release.ps1` rejects missing, additional, modified, duplicate, absolute,
+or package-escaping manifest paths. It also runs `bin\hy3d.exe --help` from a
+temporary working directory outside the package. This structural check does
+not download models or perform CUDA inference.
 
 For a mostly offline package from an already prepared checkout:
 
@@ -35,7 +112,7 @@ For a mostly offline package from an already prepared checkout:
 .\scripts\make_release.ps1 -IncludeSource -IncludeModels -IncludeVenv -Zip
 ```
 
-## Reusable Image-to-3D Script
+## Image-to-3D Options
 
 Use `scripts\generate_3d_model.ps1` to turn any local image into a GLB through the verified Windows CUDA Python backend:
 
@@ -331,8 +408,6 @@ Real-model loader benchmark:
 On the 6,101,566,528-byte local GGUF this measured 0.090 seconds to inspect 752
 tensors and 2.532 seconds to load 28 block-0 tensors, with peak RSS of
 197,054,464 bytes.
-
-Do not use `--low-vram` yet for the official Python backend on this checkout. The upstream CPU offload path currently mixes CPU and CUDA scheduler tensors. The non-offload CUDA path works for the downloaded shape model on this machine.
 
 The end-to-end native backend is intentionally not implemented yet:
 

@@ -4,7 +4,7 @@
 >
 > CBM project：`cbm+hunyuan`
 >
-> 索引規模：61 files、349 symbols、839 edges（387 call edges）
+> 索引規模：63 files、353 symbols、843 edges（387 call edges）
 
 ## 結論
 
@@ -20,7 +20,7 @@ hy3d.exe
 
 同時存在一套逐步成形的 native GGUF/CPU runtime（GGUF inspect/load、tensor mapping、attention/DiT primitives、scheduler、mesh fixture），但 end-to-end native inference 仍明確未完成。現階段適合定位為「Python backend 的 Windows orchestration CLI + native runtime 原型」，不宜把 native 路徑描述成完整推論引擎。
 
-三輪改善已把非 slow 測試由 8 個擴充到 24 個，15 項 TODO 完成 14 項。P0、GGUF 邊界與 loader、backend 語意、原子輸出、CLI/Python 拆分、toolchain、完整 dependency lock、品質分析、真實 benchmark/parity 及 CUDA shape/texture 均有本輪證據。唯一未閉環的是「全新 release zip 線上下載並重建所有依賴」。
+三輪改善已把非 slow 測試由 8 個擴充到 24 個，15 項 TODO 完成 14 項。P0、GGUF 邊界與 loader、backend 語意、原子輸出、CLI/Python 拆分、toolchain、完整 dependency lock、品質分析、真實 benchmark/parity 及 CUDA shape/texture 均有本輪證據。release zip 也已通過 Unicode path 解壓、26-file SHA-256 與 outside-cwd executable smoke；唯一未閉環的是「全新 release zip 線上下載並重建所有依賴後執行 CUDA smoke」。
 
 ## 高優先級問題處理狀態
 
@@ -33,7 +33,7 @@ hy3d.exe
 | P1 | backend script 綁定 cwd | 已修復 | executable-relative ancestor search、cwd fallback、`HY3D_SCRIPT_ROOT` override |
 | P1 | backend 缺失時假成功 | 已修復 | wrapper 固定非零退出並有 PowerShell regression test |
 | P1 | Python 例外 sidecar/輸出不完整 | 已修復 | format-preserving `.partial.glb` + atomic replace、統一 failure codes；真實 shape/texture 成功 |
-| P1 | release/setup 非 clean-machine 閉環 | 部分完成 | clean configure/package/runtime closure 與 repo 內真實 CUDA smoke 通過；全新 zip 線上重建待執行 |
+| P1 | release/setup 非 clean-machine 閉環 | 部分完成 | clean configure/package、zip/Unicode path、26-file hash、outside-cwd executable 與 repo 內真實 CUDA smoke 通過；全新 zip 線上重建待執行 |
 | P1 | 供應鏈未完全鎖定 | 已修復 | 136-package Windows cu124 transitive lock、空 venv dry-run、installed manifest、revision/hash pin |
 
 ## 主要可維護性與工程缺口
@@ -52,7 +52,7 @@ hy3d.exe
 - 測試同時涵蓋 Debug/Release 可建置，converter 也已納入 CTest。
 - GGUF tensor dimension product 已有 `uint64_t` overflow 防護，這是可延伸的正確方向。
 - texture Python path 已有 top-level exception-to-sidecar 處理，可作為 generate 共用化的基準。
-- release manifest 使用 package-relative path 與內建 SHA-256；clean build/package 已自動測試。
+- release manifest 使用 package-relative path 與內建 SHA-256；clean build/package、zip 解壓、完整 manifest coverage 與套件外 executable smoke 已自動測試。
 
 ## 已執行與後續路線
 
@@ -68,7 +68,7 @@ hy3d.exe
 1. `[完成]` script path 改以 executable/package root 定位。
 2. `[完成]` wrapper 缺失 backend 非零退出。
 3. `[完成]` generate/texture error lifecycle 與 temp + atomic rename。
-4. `[部分]` 乾淨目錄 release configure/build/package 已測；線上 setup/download/CUDA smoke 待測。
+4. `[部分]` 乾淨目錄 release configure/build/package、zip/Unicode path、hash 與 outside-cwd executable 已測；線上 setup/download/CUDA smoke 待測。
 
 ### 第三階段：大型模型效能
 
@@ -98,10 +98,10 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 結果：
 
 - Debug build：通過。
-- Debug 非 slow CTest：24/24 通過（6.74 秒）。
+- Debug 非 slow CTest：24/24 通過（6.68 秒）。
 - Release build：通過。
-- Release 非 slow CTest：24/24 通過（5.02 秒）。
-- Clean release configure/build/package/runtime-helper closure：1/1 通過（18.06 秒）。
+- Release 非 slow CTest：24/24 通過（4.70 秒）。
+- Clean release configure/build/package、zip/Unicode path、26-file SHA-256 與 outside-cwd executable：1/1 通過（20.22 秒），且負向測試拒絕未列與遭修改檔案。
 - Release tensor lookup benchmark：1,000,000 次查找 0.16 秒。
 - 真實 shape：249.656 秒，11,250,604 bytes，獨立解析 312,722 vertices / 624,760 faces。
 - 真實 texture：1284.569 秒，17,695,540 bytes，獨立解析 PBRMaterial、UV、texture visual。

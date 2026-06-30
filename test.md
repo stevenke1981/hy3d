@@ -40,12 +40,12 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 | 組態／Gate | 結果 |
 |---|---:|
 | Debug build | 通過，所有 first-party targets 使用 `/W4 /permissive-` |
-| Debug 非 slow CTest | 24/24 通過，6.74 秒 |
+| Debug 非 slow CTest | 24/24 通過，6.68 秒 |
 | Release build | 通過 |
-| Release 非 slow CTest | 24/24 通過，5.02 秒 |
-| Clean release test | 1/1 通過，18.06 秒（package closure 包含 resolved lock 與所有 runtime helper） |
+| Release 非 slow CTest | 24/24 通過，4.70 秒 |
+| Clean release test | 1/1 通過，20.22 秒（clean configure/build、zip、Unicode path extraction、26-file SHA-256、outside-cwd executable smoke；另拒絕未列與遭修改檔案） |
 
-新增覆蓋：嚴格／bounded numeric parser、各 subcommand parser/handler、Python preflight/import/export/metadata-write failure、format-preserving partial output、136-package resolved lock、installed manifest、四類 NumPy parity、tensor lookup/真實 GGUF loader benchmark、clean release runtime-helper closure。
+新增覆蓋：嚴格／bounded numeric parser、各 subcommand parser/handler、Python preflight/import/export/metadata-write failure、format-preserving partial output、136-package resolved lock、installed manifest、四類 NumPy parity、tensor lookup/真實 GGUF loader benchmark，以及 clean release runtime-helper closure、zip extraction、完整 manifest coverage 與 executable smoke。
 
 仍未執行：從全新 release zip 開始的完整線上 source/model 下載與全新 venv 建立。其餘 extension rebuild、真實 CUDA shape/texture、真實 GGUF load/peak RSS/block forward 已在本輪重跑。
 
@@ -74,7 +74,7 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 | Runtime | NumPy attention/conditioned/timestep/final parity、真實 GGUF load/RSS/block forward | 完整官方 end-to-end native graph parity（native backend 尚未完成） |
 | Converter | writer metadata/tensor、name mapping、safe default/unsafe opt-in | 重複名稱、部分輸出清理、大模型 peak RSS |
 | Python pipelines | preflight、import/export/metadata write failure、原子輸出、真實 CUDA shape/texture | constructor/inference fault injection 的更多細粒度 cases |
-| Release/setup | clean configure/build/package、pinned local source checkout | 真實線上下載、zip 解壓後 CUDA shape/texture smoke |
+| Release/setup | clean configure/build/package、zip 解壓到空白/中文路徑、26-file SHA-256、outside-cwd executable、pinned local source checkout | 真實線上下載與 zip 解壓後 CUDA shape/texture smoke |
 
 ## 3. P0/P1 自動測試
 
@@ -208,10 +208,10 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 
 1. checkout 後刪除/確認不存在 `build`、`.venv-hy3d`、`third_party`、`models`。
 2. 執行 release build，確認會自行 configure。
-3. 解壓 release zip 到含空白與中文的路徑。
+3. 解壓 release zip 到含空白與中文的路徑，執行 `scripts\verify_release.ps1`。
 4. 僅依 `README_RELEASE.md` 執行 setup。
 5. 執行 generate/texture smoke。
-6. 逐項驗證 `SHA256SUMS.txt` 使用 package-relative path 且 hash 全部正確。
+6. 逐項驗證 `SHA256SUMS.txt` 使用 package-relative path、沒有重複/越界/未列檔案，且 hash 全部正確。
 7. 從 release root 以外 cwd 執行 `bin\hy3d.exe`。
 
 任何未宣告的本機全域依賴、硬編碼 VS/CUDA/Python 路徑或缺失 source checkout，都視為 release gate 失敗。

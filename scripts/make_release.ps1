@@ -89,6 +89,7 @@ Copy-Item -LiteralPath (Join-Path $root "scripts\hy3d_generate.py") -Destination
 Copy-Item -LiteralPath (Join-Path $root "scripts\hy3d_texture.py") -Destination (Join-Path $release "scripts\hy3d_texture.py")
 Copy-Item -LiteralPath (Join-Path $root "scripts\hy3d_run_context.py") -Destination (Join-Path $release "scripts\hy3d_run_context.py")
 Copy-Item -LiteralPath (Join-Path $root "scripts\hy3d_toolchain.ps1") -Destination (Join-Path $release "scripts\hy3d_toolchain.ps1")
+Copy-Item -LiteralPath (Join-Path $root "scripts\verify_release.ps1") -Destination (Join-Path $release "scripts\verify_release.ps1")
 Copy-Item -LiteralPath (Join-Path $root "scripts\write_dependency_manifest.py") -Destination (Join-Path $release "scripts\write_dependency_manifest.py")
 Copy-Item -LiteralPath (Join-Path $root "scripts\run_python_backend.ps1") -Destination (Join-Path $release "scripts\run_python_backend.ps1")
 Copy-Item -LiteralPath (Join-Path $root "scripts\run_texture_backend.ps1") -Destination (Join-Path $release "scripts\run_texture_backend.ps1")
@@ -174,11 +175,15 @@ endlocal
 
 Run in order:
 
-1. `hy3d-setup.cmd`
-2. `hy3d-generate-smoke.cmd`
-3. `hy3d-texture-smoke.cmd`
+1. `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify_release.ps1`
+2. `hy3d-setup.cmd`
+3. `hy3d-generate-smoke.cmd`
+4. `hy3d-texture-smoke.cmd`
 
 The generated files and sidecar logs are written under `outputs\`.
+The first command verifies every packaged file against `SHA256SUMS.txt` and
+runs `bin\hy3d.exe --help` from outside the release directory. It does not
+download models or run CUDA inference.
 
 Advanced usage:
 
