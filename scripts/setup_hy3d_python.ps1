@@ -3,10 +3,12 @@ param(
     [string] $VenvPath = ".\.venv-hy3d",
     [string] $SourceRevision = "82920d643c0dc2f7bfd7255f45f62d386edfe60c",
     [string] $ModelRevision = "0b94677654c57bb9a6b6845cd7b704ccf551d327",
-    [string] $ManifestPath = ".\hy3d-dependencies.json"
+    [string] $ManifestPath = ".\hy3d-dependencies.json",
+    [switch] $RecreateVenv
 )
 
 $ErrorActionPreference = "Stop"
+. (Join-Path $PSScriptRoot "hy3d_setup_helpers.ps1")
 
 $uvCommand = Get-Command uv -ErrorAction SilentlyContinue
 if ($uvCommand) {
@@ -18,11 +20,21 @@ if ($uvCommand) {
     }
 }
 
-& $uvExecutable venv --python $PythonVersion $VenvPath
-if ($LASTEXITCODE -ne 0) {
-    throw "failed to create Python virtual environment"
+$venvPlan = Get-Hy3dVenvPlan -VenvPath $VenvPath -RecreateVenv:$RecreateVenv
+if ($venvPlan.Action -eq "reuse") {
+    Write-Host "Reusing Python virtual environment: $($venvPlan.VenvPath)"
+} else {
+    $venvArguments = @("venv", "--python", $PythonVersion)
+    if ($venvPlan.Action -eq "recreate") {
+        $venvArguments += "--clear"
+    }
+    $venvArguments += $venvPlan.VenvPath
+    & $uvExecutable @venvArguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "failed to $($venvPlan.Action) Python virtual environment"
+    }
 }
-$python = Join-Path $VenvPath "Scripts\python.exe"
+$python = $venvPlan.PythonPath
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 & $uvExecutable pip install --python $python `

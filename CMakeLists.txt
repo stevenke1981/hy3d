@@ -131,6 +131,12 @@ if (WIN32)
             -RepoRoot ${CMAKE_CURRENT_SOURCE_DIR}
     )
     add_test(
+        NAME setup_helpers
+        COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_setup_helpers.ps1
+            -RepoRoot ${CMAKE_CURRENT_SOURCE_DIR}
+    )
+    add_test(
         NAME hy3d_toolchain
         COMMAND powershell.exe -NoProfile -ExecutionPolicy Bypass -File
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_hy3d_toolchain.ps1

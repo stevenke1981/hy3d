@@ -39,5 +39,10 @@ if ($setup -notmatch "failed to install resolved dependencies" -or
     $setup -notmatch "setup dry-run failed") {
     throw "setup script does not enforce native-command exit codes"
 }
+if ($setup -notmatch [regex]::Escape("hy3d_setup_helpers.ps1") -or
+    $setup -notmatch '\[switch\]\s*\$RecreateVenv' -or
+    $setup -notmatch "Get-Hy3dVenvPlan") {
+    throw "setup script does not support resumable venv lifecycle"
+}
 
 Write-Host "dependency lock tests passed"

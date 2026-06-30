@@ -78,6 +78,10 @@ source/venv root with `subst.exe`, re-enters once through
 `-SkipUnicodeRemap`, installs the rasterizer non-editably, and always removes
 the mapping in `finally`. Preserve all four parts of this contract.
 
+Setup is intentionally resumable. `hy3d_setup_helpers.ps1` distinguishes
+create, reuse, explicit recreate, and incomplete states. Never silently delete
+an existing venv; only `-RecreateVenv` may request `uv venv --clear`.
+
 Before completion, parse changed PowerShell/Python files, run
 `git diff --check`, inspect `git status`, and report exact commands and
 results. Never claim a gate passed unless it completed.

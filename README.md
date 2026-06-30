@@ -22,12 +22,11 @@ backend.
 
 - Verified on Windows with an RTX 3070 Ti: CUDA shape generation and
   Hunyuan3D-Paint texture generation.
-- Core Debug and Release suites: 24/24 non-slow tests passing.
+- Core Debug and Release suites: 26/26 non-slow tests passing.
 - Release packaging: clean configure/build, zip extraction to a Unicode path,
   package-wide SHA-256 verification, and executable smoke are automated.
-- Remaining release gate: run online source/model download, fresh virtual
-  environment setup, shape smoke, and texture smoke starting only from a newly
-  extracted release zip.
+- Clean online setup, Unicode-root extension build, shape smoke, and texture
+  smoke have all completed from a release package.
 - Source and model downloads are pinned. The resolved Windows/Python
   3.10/CUDA 12.4 lock contains 136 packages.
 
@@ -69,6 +68,17 @@ run writes a `.log.txt` and `.json` sidecar next to the GLB. Start with
 
 Do not use `--low-vram` for the official Python backend on this checkout. The
 upstream offload path currently mixes CPU and CUDA scheduler tensors.
+
+Setup is resumable. Rerunning it reuses a complete `.venv-hy3d`, reconciles
+packages to the lock, rebuilds extensions, and refreshes the manifest:
+
+```powershell
+.\scripts\setup_hy3d_python.ps1
+```
+
+Use `-RecreateVenv` only when you intentionally want to clear and rebuild the
+environment. A partial venv without `Scripts\python.exe` is rejected with this
+recovery instruction instead of being silently deleted.
 
 ## Developer Build
 

@@ -89,6 +89,7 @@ Copy-Item -LiteralPath (Join-Path $root "scripts\hy3d_generate.py") -Destination
 Copy-Item -LiteralPath (Join-Path $root "scripts\hy3d_texture.py") -Destination (Join-Path $release "scripts\hy3d_texture.py")
 Copy-Item -LiteralPath (Join-Path $root "scripts\hy3d_run_context.py") -Destination (Join-Path $release "scripts\hy3d_run_context.py")
 Copy-Item -LiteralPath (Join-Path $root "scripts\hy3d_toolchain.ps1") -Destination (Join-Path $release "scripts\hy3d_toolchain.ps1")
+Copy-Item -LiteralPath (Join-Path $root "scripts\hy3d_setup_helpers.ps1") -Destination (Join-Path $release "scripts\hy3d_setup_helpers.ps1")
 Copy-Item -LiteralPath (Join-Path $root "scripts\patch_hy3dpaint_windows.py") -Destination (Join-Path $release "scripts\patch_hy3dpaint_windows.py")
 Copy-Item -LiteralPath (Join-Path $root "scripts\verify_release.ps1") -Destination (Join-Path $release "scripts\verify_release.ps1")
 Copy-Item -LiteralPath (Join-Path $root "scripts\write_dependency_manifest.py") -Destination (Join-Path $release "scripts\write_dependency_manifest.py")
@@ -185,6 +186,10 @@ The generated files and sidecar logs are written under `outputs\`.
 The first command verifies every packaged file against `SHA256SUMS.txt` and
 runs `bin\hy3d.exe --help` from outside the release directory. It does not
 download models or run CUDA inference.
+
+Setup is resumable: rerunning `hy3d-setup.cmd` reuses a complete
+`.venv-hy3d`. To intentionally replace it, run
+`powershell.exe -File .\scripts\setup_hy3d_python.ps1 -RecreateVenv`.
 
 Advanced usage:
 

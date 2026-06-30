@@ -4,7 +4,7 @@
 >
 > CBM project：`cbm+hunyuan`
 >
-> 索引規模：65 files、369 symbols、874 edges（391 call edges）
+> 索引規模：67 files、373 symbols、878 edges（391 call edges）
 
 ## 結論
 
@@ -20,7 +20,7 @@ hy3d.exe
 
 同時存在一套逐步成形的 native GGUF/CPU runtime（GGUF inspect/load、tensor mapping、attention/DiT primitives、scheduler、mesh fixture），但 end-to-end native inference 仍明確未完成。現階段適合定位為「Python backend 的 Windows orchestration CLI + native runtime 原型」，不宜把 native 路徑描述成完整推論引擎。
 
-非 slow 測試已由 8 個擴充到 25 個，15 項 TODO 全部完成。全新 release zip 已通過線上下載、fresh venv、patched Windows extensions、shape/texture CUDA smoke；非 ASCII root 以自動、可清理的 `subst` remap 完成 native build。
+非 slow 測試已由 8 個擴充到 26 個，15 項 TODO 全部完成。全新 release zip 已通過線上下載、fresh/resumed venv、patched Windows extensions、shape/texture CUDA smoke；非 ASCII root 以自動、可清理的 `subst` remap 完成 native build。
 
 ## 高優先級問題處理狀態
 
@@ -44,6 +44,7 @@ hy3d.exe
 - CI 已有 Windows Debug/Release、Linux ASan/UBSan 與 clang-tidy；仍缺 fuzzer 與真實 CUDA nightly job。
 - native runtime 有 NumPy 四類 primitive parity、lookup benchmark、真實 GGUF load/RSS/block forward；完整 native end-to-end graph 仍不是已完成 backend。
 - CMake warning flags、clang-tidy、ASan/UBSan jobs 均已加入。
+- setup 支援安全 resume；完整 venv 會重用並對齊 lock，殘缺 venv 必須明確 `-RecreateVenv`。
 
 ## 正向觀察
 
@@ -98,10 +99,10 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 結果：
 
 - Debug build：通過。
-- Debug 非 slow CTest：25/25 通過（7.25 秒）。
+- Debug 非 slow CTest：26/26 通過（12.20 秒）。
 - Release build：通過。
-- Release 非 slow CTest：25/25 通過（5.73 秒）。
-- Clean release configure/build/package、zip/Unicode path、27-file SHA-256 與 outside-cwd executable：1/1 通過（19.59 秒），且負向測試拒絕未列與遭修改檔案。
+- Release 非 slow CTest：26/26 通過（7.35 秒）。
+- Clean release configure/build/package、zip/Unicode path、28-file SHA-256 與 outside-cwd executable：1/1 通過（22.97 秒），且負向測試拒絕未列與遭修改檔案。
 - Clean release shape：219.52 秒，11,250,604 bytes，獨立解析 312,722 vertices / 624,760 faces。
 - Clean release texture：1325.40 秒，17,695,556 bytes，獨立解析 PBRMaterial、474,770 vertices / 624,760 faces。
 - Unicode-root extension rebuild：103.8 秒；temporary `Z:` mapping 清除後 custom rasterizer 與 mesh processor 均可由原路徑載入。

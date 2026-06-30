@@ -2,13 +2,20 @@
 
 > 檢視日期：2026-06-30
 >
-> 方法：CBM 專案索引 `cbm+hunyuan`（65 files / 369 symbols / 874 edges）、關鍵符號與呼叫路徑檢視、Debug/Release 實際建置、CTest 與真實 CUDA/model smoke。
+> 方法：CBM 專案索引 `cbm+hunyuan`（67 files / 373 symbols / 878 edges）、關鍵符號與呼叫路徑檢視、Debug/Release 實際建置、CTest 與真實 CUDA/model smoke。
 >
 > 原則：先處理安全與錯誤成功，再做大型模型的 I/O／查找優化，最後拆分結構與補齊工程化。
 
 ## 2026-06-30 實作狀態
 
 已完成 15/15 項。全新 release zip 已完成線上 source/model、136-package venv、Windows extensions、shape 與 texture CUDA smoke；含空白/中文的 release root 亦可自動 remap 後完成 native build，解除映射後 modules 與 GLB 可由原始 Unicode 路徑載入。
+
+### 15/15 後續強化
+
+- [x] **讓長時間 setup 可安全恢復**
+  - 完整 `.venv-hy3d` 預設重用並重新對齊 lock；只有 `-RecreateVenv` 會要求 `uv venv --clear`。
+  - 殘缺 venv 不會被靜默刪除，而是停止並提供明確恢復命令。
+  - 真實既有環境 resume 已完成依賴同步、extension rebuild、dry-run 與 manifest refresh。
 
 ## P0：安全阻斷
 

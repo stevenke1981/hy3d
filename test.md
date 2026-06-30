@@ -40,12 +40,12 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 | 組態／Gate | 結果 |
 |---|---:|
 | Debug build | 通過，所有 first-party targets 使用 `/W4 /permissive-` |
-| Debug 非 slow CTest | 25/25 通過，7.25 秒 |
+| Debug 非 slow CTest | 26/26 通過，12.20 秒 |
 | Release build | 通過 |
-| Release 非 slow CTest | 25/25 通過，5.73 秒 |
-| Clean release test | 1/1 通過，19.59 秒（clean configure/build、zip、Unicode path extraction、27-file SHA-256、outside-cwd executable smoke；另拒絕未列與遭修改檔案） |
+| Release 非 slow CTest | 26/26 通過，7.35 秒 |
+| Clean release test | 1/1 通過，22.97 秒（clean configure/build、zip、Unicode path extraction、28-file SHA-256、outside-cwd executable smoke；另拒絕未列與遭修改檔案） |
 
-新增覆蓋：嚴格／bounded numeric parser、各 subcommand parser/handler、Python preflight/import/export/metadata-write failure、format-preserving partial output、136-package resolved lock、installed manifest、四類 NumPy parity、tensor lookup/真實 GGUF loader benchmark，以及 clean release runtime-helper closure、zip extraction、完整 manifest coverage 與 executable smoke。
+新增覆蓋：嚴格／bounded numeric parser、各 subcommand parser/handler、Python preflight/import/export/metadata-write failure、format-preserving partial output、136-package resolved lock、installed manifest、四類 NumPy parity、tensor lookup/真實 GGUF loader benchmark、setup create/reuse/recreate/partial-state lifecycle，以及 clean release runtime-helper closure、zip extraction、完整 manifest coverage 與 executable smoke。
 
 全新 release zip 已完成 pinned source/model、136-package venv、revision-guarded rasterizer patch、Windows extensions 與 CUDA shape/texture。含中文 root 透過自動 `subst` remap 成功編譯；移除 mapping 後 native modules 與 GLB 仍可由 Unicode 路徑載入。
 
@@ -64,6 +64,7 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 | Clean release shape | 通過，219.52 秒，11,250,604 bytes；312,722 vertices / 624,760 faces |
 | Clean release texture | 通過，1325.40 秒，17,695,556 bytes；PBRMaterial、474,770 vertices / 624,760 faces |
 | Unicode-root extension rebuild | 通過，103.8 秒；temporary `Z:` mapping 清除後兩個 native modules 可載入 |
+| Existing-venv setup resume | 通過；重用 venv、同步 14 個漂移 packages、extensions/dry-run/manifest 完成 |
 
 首次 shape 實跑曾在完成 diffusion/volume decode 後揭露 `output.glb.partial` 被 exporter 誤判為 `.partial` 格式；修正為 `output.partial.glb` 並加入 regression test 後，shape 與 texture 皆以同一原子輸出流程完成。
 
@@ -77,7 +78,7 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 | Runtime | NumPy attention/conditioned/timestep/final parity、真實 GGUF load/RSS/block forward | 完整官方 end-to-end native graph parity（native backend 尚未完成） |
 | Converter | writer metadata/tensor、name mapping、safe default/unsafe opt-in | 重複名稱、部分輸出清理、大模型 peak RSS |
 | Python pipelines | preflight、import/export/metadata write failure、原子輸出、真實 CUDA shape/texture | constructor/inference fault injection 的更多細粒度 cases |
-| Release/setup | clean configure/build/package、Unicode 結構驗證、線上 pinned source/model、fresh venv、patched extensions、Unicode-root remap、CUDA shape/texture | nightly 從零重跑以監測上游工具鏈漂移 |
+| Release/setup | clean configure/build/package、resumable venv lifecycle、Unicode-root remap、CUDA shape/texture | nightly 從零重跑以監測上游工具鏈漂移 |
 
 ## 3. P0/P1 自動測試
 
