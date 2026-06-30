@@ -81,6 +81,7 @@
   - 驗收：在乾淨暫存目錄由 release zip 開始，依 README 的四個命令可完成 package verification、setup、shape smoke、texture smoke。
   - 進度：獨立空 build 目錄 configure/build/package 已自動驗收；source/model revision、setup 順序已修正。線上下載後的 CUDA shape/texture smoke 尚未執行。
   - 本輪進度：release 測試新增共用 lifecycle、toolchain、resolved lock、manifest writer 的 package closure gate；另新增 `verify_release.ps1`，自動建立 zip、解壓到含空白/中文的路徑、拒絕不安全 manifest path、驗證 26 個 package files 的 SHA-256，並從套件外 cwd 執行 `hy3d.exe --help`。repo 內 pinned source/model 已完成真實 CUDA shape/texture smoke，custom rasterizer 與 mesh inpaint extension 亦實際重建成功。尚未從全新 release zip 重新下載約數 GB 模型並建立全新 venv，因此維持未勾選。
+  - 最新實跑：修正 `%USERPROFILE%\.local\bin\uvx.exe` 探測與 `huggingface-hub==0.30.2` 必須呼叫 `huggingface-cli` 的相容性後，全新 zip 已完成 pinned source/model 下載與全新 136-package venv。下一個阻斷是 freshly cloned upstream source 未自動套用 prepared checkout 的 Windows `int64_t`/CUDA custom-rasterizer patch；Unicode 路徑另會使 PyTorch/Ninja 路徑亂碼。shape/texture 尚未由該 clean zip 執行，因此維持未勾選。
 
 - [x] **鎖定依賴與下載來源**
   - 位置：`scripts/setup_hy3d_python.ps1`、`scripts/download_hy3d_models.ps1`

@@ -33,7 +33,7 @@ hy3d.exe
 | P1 | backend script 綁定 cwd | 已修復 | executable-relative ancestor search、cwd fallback、`HY3D_SCRIPT_ROOT` override |
 | P1 | backend 缺失時假成功 | 已修復 | wrapper 固定非零退出並有 PowerShell regression test |
 | P1 | Python 例外 sidecar/輸出不完整 | 已修復 | format-preserving `.partial.glb` + atomic replace、統一 failure codes；真實 shape/texture 成功 |
-| P1 | release/setup 非 clean-machine 閉環 | 部分完成 | clean configure/package、zip/Unicode path、26-file hash、outside-cwd executable 與 repo 內真實 CUDA smoke 通過；全新 zip 線上重建待執行 |
+| P1 | release/setup 非 clean-machine 閉環 | 部分完成 | 全新 zip 已完成線上 source/model 與 136-package venv；clean source 尚缺自動套用 Windows rasterizer patch，CUDA smoke 待執行 |
 | P1 | 供應鏈未完全鎖定 | 已修復 | 136-package Windows cu124 transitive lock、空 venv dry-run、installed manifest、revision/hash pin |
 
 ## 主要可維護性與工程缺口
@@ -111,7 +111,7 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 
 未執行：
 
-- release zip 的線上 source/model 下載後 CUDA smoke。
+- release zip 的 CUDA smoke；線上下載與全新 venv 已完成，但 clean source custom rasterizer 缺少自動 Windows compatibility patch。
 - 惡意 pickle payload 的實際執行（預設安全模式與明確 opt-in 已由參數測試驗證）。
 
 詳細執行清單見 `todos.md`，測試矩陣與驗收 gate 見 `test.md`。

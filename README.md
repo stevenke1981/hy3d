@@ -43,6 +43,12 @@ backend.
 Large models, generated outputs, build trees, and virtual environments are
 local artifacts and must not be committed.
 
+Known clean-setup limitation: source/model download and the fresh 136-package
+environment now complete, including user-local `uvx` discovery. The pinned
+upstream custom rasterizer still needs the repository's Windows `int64_t`/CUDA
+compatibility patch to be applied automatically before extension compilation.
+Until that is wired into setup, use a prepared checkout for texture generation.
+
 ## Quick Start for Humans
 
 From PowerShell:

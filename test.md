@@ -47,7 +47,7 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 
 新增覆蓋：嚴格／bounded numeric parser、各 subcommand parser/handler、Python preflight/import/export/metadata-write failure、format-preserving partial output、136-package resolved lock、installed manifest、四類 NumPy parity、tensor lookup/真實 GGUF loader benchmark，以及 clean release runtime-helper closure、zip extraction、完整 manifest coverage 與 executable smoke。
 
-仍未執行：從全新 release zip 開始的完整線上 source/model 下載與全新 venv 建立。其餘 extension rebuild、真實 CUDA shape/texture、真實 GGUF load/peak RSS/block forward 已在本輪重跑。
+全新 release zip 已實際完成 pinned source/model 下載與全新 136-package venv 建立；clean source 的 custom rasterizer 因未自動套用 Windows compatibility patch 而編譯失敗，故尚未進入該 zip 的 CUDA shape/texture。其餘 prepared-checkout extension rebuild、真實 CUDA shape/texture、真實 GGUF load/peak RSS/block forward 已通過。
 
 ### 2026-06-30 真實 CUDA/model 驗收
 

@@ -4,6 +4,7 @@ param(
     [string] $SourceRepo = "https://github.com/Tencent-Hunyuan/Hunyuan3D-2.1.git",
     [string] $SourceRevision = "82920d643c0dc2f7bfd7255f45f62d386edfe60c",
     [string] $ModelRevision = "0b94677654c57bb9a6b6845cd7b704ccf551d327",
+    [string] $UvPath,
     [switch] $SkipSource,
     [switch] $SkipModels,
     [switch] $ShapeOnly,
@@ -15,9 +16,25 @@ $ErrorActionPreference = "Stop"
 function Invoke-HfDownload {
     param([string[]] $Arguments)
 
-    $uvx = Get-Command uvx -ErrorAction SilentlyContinue
-    if ($uvx) {
-        & uvx --from "huggingface-hub==0.30.2" hf @Arguments
+    $uvxExecutable = $UvPath
+    if ($uvxExecutable) {
+        if (-not (Test-Path -LiteralPath $uvxExecutable -PathType Leaf)) {
+            throw "specified uvx executable does not exist: $uvxExecutable"
+        }
+    } else {
+        $uvxCommand = Get-Command uvx -ErrorAction SilentlyContinue
+        if ($uvxCommand) {
+            $uvxExecutable = $uvxCommand.Source
+        } else {
+            $userLocalUvx = Join-Path $env:USERPROFILE ".local\bin\uvx.exe"
+            if (Test-Path -LiteralPath $userLocalUvx -PathType Leaf) {
+                $uvxExecutable = $userLocalUvx
+            }
+        }
+    }
+
+    if ($uvxExecutable) {
+        & $uvxExecutable --from "huggingface-hub==0.30.2" huggingface-cli @Arguments
         if ($LASTEXITCODE -ne 0) {
             throw "Hugging Face download failed with exit code $LASTEXITCODE"
         }
