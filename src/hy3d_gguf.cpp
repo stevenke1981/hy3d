@@ -2,10 +2,12 @@
 
 #include <array>
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 #include <numeric>
 #include <sstream>
+#include <unordered_set>
 
 namespace hy3d {
 namespace {
@@ -26,18 +28,31 @@ enum class GgufValueType : std::uint32_t {
     Float64 = 12,
 };
 
+constexpr std::uint64_t kMaxStringBytes = 64ull * 1024ull * 1024ull;
+constexpr std::uint64_t kMaxMetadataCount = 1'000'000;
+constexpr std::uint64_t kMaxTensorCount = 1'000'000;
+constexpr std::uint64_t kMaxArrayCount = 16'000'000;
+constexpr std::uint32_t kMaxTensorDimensions = 16;
+
 template <typename T>
 bool read_pod(std::ifstream& input, T& value) {
     input.read(reinterpret_cast<char*>(&value), sizeof(value));
     return static_cast<bool>(input);
 }
 
-std::uint64_t align_offset(std::uint64_t offset, std::uint64_t alignment) {
+Result<std::uint64_t> align_offset(std::uint64_t offset, std::uint64_t alignment) {
+    if (alignment == 0) {
+        return Result<std::uint64_t>::failure("GGUF alignment must be positive");
+    }
     const auto remainder = offset % alignment;
     if (remainder == 0) {
-        return offset;
+        return Result<std::uint64_t>::success(offset);
     }
-    return offset + (alignment - remainder);
+    const auto padding = alignment - remainder;
+    if (offset > std::numeric_limits<std::uint64_t>::max() - padding) {
+        return Result<std::uint64_t>::failure("GGUF aligned offset overflow");
+    }
+    return Result<std::uint64_t>::success(offset + padding);
 }
 
 Result<std::uint64_t> ggml_type_size(GgmlType type) {
@@ -69,13 +84,48 @@ Result<std::uint64_t> tensor_byte_size(GgmlType type, const std::vector<std::uin
     return Result<std::uint64_t>::success(elements * element_size.value());
 }
 
-Result<std::string> read_string(std::ifstream& input) {
+Result<int> skip_bytes(
+    std::ifstream& input,
+    std::uint64_t bytes,
+    std::uint64_t file_size,
+    const std::string& context) {
+    const auto position = input.tellg();
+    if (position < 0) {
+        return Result<int>::failure("failed to determine GGUF position while " + context);
+    }
+    const auto offset = static_cast<std::uint64_t>(position);
+    if (offset > file_size || bytes > file_size - offset) {
+        return Result<int>::failure("GGUF " + context + " exceeds file range");
+    }
+    if (bytes > static_cast<std::uint64_t>(std::numeric_limits<std::streamoff>::max())) {
+        return Result<int>::failure("GGUF " + context + " is too large to seek");
+    }
+    input.seekg(static_cast<std::streamoff>(bytes), std::ios::cur);
+    if (!input) {
+        return Result<int>::failure("unexpected end of file while " + context);
+    }
+    return Result<int>::success(0);
+}
+
+Result<std::string> read_string(std::ifstream& input, std::uint64_t file_size) {
     std::uint64_t size = 0;
     if (!read_pod(input, size)) {
         return Result<std::string>::failure("unexpected end of file while reading GGUF string length");
     }
-    if (size > 1024ull * 1024ull * 64ull) {
+    if (size > kMaxStringBytes) {
         return Result<std::string>::failure("GGUF string is unreasonably large");
+    }
+    const auto position = input.tellg();
+    if (position < 0) {
+        return Result<std::string>::failure("failed to determine GGUF string position");
+    }
+    const auto offset = static_cast<std::uint64_t>(position);
+    if (offset > file_size || size > file_size - offset) {
+        return Result<std::string>::failure("GGUF string exceeds file range");
+    }
+    if (size > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()) ||
+        size > static_cast<std::uint64_t>(std::numeric_limits<std::streamsize>::max())) {
+        return Result<std::string>::failure("GGUF string is too large for this platform");
     }
     std::string value(static_cast<std::size_t>(size), '\0');
     if (size > 0) {
@@ -111,9 +161,9 @@ std::uint64_t scalar_size(GgufValueType type) {
     return 0;
 }
 
-Result<int> skip_value(std::ifstream& input, GgufValueType type);
+Result<int> skip_value(std::ifstream& input, GgufValueType type, std::uint64_t file_size);
 
-Result<int> skip_array(std::ifstream& input) {
+Result<int> skip_array(std::ifstream& input, std::uint64_t file_size) {
     std::uint32_t raw_type = 0;
     std::uint64_t count = 0;
     if (!read_pod(input, raw_type) || !read_pod(input, count)) {
@@ -121,11 +171,17 @@ Result<int> skip_array(std::ifstream& input) {
     }
 
     const auto type = static_cast<GgufValueType>(raw_type);
-    if (type == GgufValueType::String || type == GgufValueType::Array) {
+    if (count > kMaxArrayCount) {
+        return Result<int>::failure("GGUF array count is unreasonably large");
+    }
+    if (type == GgufValueType::Array) {
+        return Result<int>::failure("nested GGUF arrays are not supported");
+    }
+    if (type == GgufValueType::String) {
         for (std::uint64_t i = 0; i < count; ++i) {
-            auto skipped = skip_value(input, type);
-            if (!skipped.ok()) {
-                return skipped;
+            auto value = read_string(input, file_size);
+            if (!value.ok()) {
+                return Result<int>::failure(value.error());
             }
         }
         return Result<int>::success(0);
@@ -135,17 +191,15 @@ Result<int> skip_array(std::ifstream& input) {
     if (bytes == 0) {
         return Result<int>::failure("unknown GGUF array value type");
     }
-
-    input.seekg(static_cast<std::streamoff>(bytes * count), std::ios::cur);
-    if (!input) {
-        return Result<int>::failure("unexpected end of file while skipping GGUF array");
+    if (count != 0 && bytes > std::numeric_limits<std::uint64_t>::max() / count) {
+        return Result<int>::failure("GGUF array byte size overflow");
     }
-    return Result<int>::success(0);
+    return skip_bytes(input, bytes * count, file_size, "skipping GGUF array");
 }
 
-Result<int> skip_value(std::ifstream& input, GgufValueType type) {
+Result<int> skip_value(std::ifstream& input, GgufValueType type, std::uint64_t file_size) {
     if (type == GgufValueType::String) {
-        auto value = read_string(input);
+        auto value = read_string(input, file_size);
         if (!value.ok()) {
             return Result<int>::failure(value.error());
         }
@@ -153,23 +207,25 @@ Result<int> skip_value(std::ifstream& input, GgufValueType type) {
     }
 
     if (type == GgufValueType::Array) {
-        return skip_array(input);
+        return skip_array(input, file_size);
     }
 
     const auto bytes = scalar_size(type);
     if (bytes == 0) {
         return Result<int>::failure("unknown GGUF metadata value type");
     }
-    input.seekg(static_cast<std::streamoff>(bytes), std::ios::cur);
-    if (!input) {
-        return Result<int>::failure("unexpected end of file while skipping GGUF metadata value");
-    }
-    return Result<int>::success(0);
+    return skip_bytes(input, bytes, file_size, "skipping GGUF metadata value");
 }
 
 } // namespace
 
 Result<GgufInfo> inspect_gguf(const std::string& path) {
+    std::error_code file_error;
+    const auto file_size = std::filesystem::file_size(path, file_error);
+    if (file_error) {
+        return Result<GgufInfo>::failure("model not found: " + path);
+    }
+
     std::ifstream input(path, std::ios::binary);
     if (!input) {
         return Result<GgufInfo>::failure("model not found: " + path);
@@ -185,26 +241,54 @@ Result<GgufInfo> inspect_gguf(const std::string& path) {
     if (!read_pod(input, info.version) || !read_pod(input, info.tensor_count) || !read_pod(input, info.metadata_count)) {
         return Result<GgufInfo>::failure("file ended before GGUF header was complete");
     }
+    if (info.version != 2 && info.version != 3) {
+        return Result<GgufInfo>::failure("unsupported GGUF version: " + std::to_string(info.version));
+    }
+    if (info.metadata_count > kMaxMetadataCount) {
+        return Result<GgufInfo>::failure("GGUF metadata count is unreasonably large");
+    }
+    if (info.tensor_count > kMaxTensorCount) {
+        return Result<GgufInfo>::failure("GGUF tensor count is unreasonably large");
+    }
+    if (info.metadata_count > file_size / 13) {
+        return Result<GgufInfo>::failure("GGUF metadata count cannot fit in file");
+    }
+    if (info.tensor_count > file_size / 24) {
+        return Result<GgufInfo>::failure("GGUF tensor count cannot fit in file");
+    }
+
+    info.tensor_names.reserve(static_cast<std::size_t>(info.tensor_count));
+    info.tensor_infos.reserve(static_cast<std::size_t>(info.tensor_count));
+    std::unordered_set<std::string> metadata_keys;
+    metadata_keys.reserve(static_cast<std::size_t>(info.metadata_count));
 
     for (std::uint64_t i = 0; i < info.metadata_count; ++i) {
-        auto key = read_string(input);
+        auto key = read_string(input, file_size);
         if (!key.ok()) {
             return Result<GgufInfo>::failure(key.error());
+        }
+        if (!metadata_keys.insert(key.value()).second) {
+            return Result<GgufInfo>::failure("duplicate GGUF metadata key: " + key.value());
         }
         std::uint32_t raw_type = 0;
         if (!read_pod(input, raw_type)) {
             return Result<GgufInfo>::failure("unexpected end of file while reading GGUF metadata type");
         }
-        auto skipped = skip_value(input, static_cast<GgufValueType>(raw_type));
+        auto skipped = skip_value(input, static_cast<GgufValueType>(raw_type), file_size);
         if (!skipped.ok()) {
             return Result<GgufInfo>::failure(skipped.error());
         }
     }
 
+    std::unordered_set<std::string> tensor_names;
+    tensor_names.reserve(static_cast<std::size_t>(info.tensor_count));
     for (std::uint64_t i = 0; i < info.tensor_count; ++i) {
-        auto name = read_string(input);
+        auto name = read_string(input, file_size);
         if (!name.ok()) {
             return Result<GgufInfo>::failure(name.error());
+        }
+        if (!tensor_names.insert(name.value()).second) {
+            return Result<GgufInfo>::failure("duplicate GGUF tensor name: " + name.value());
         }
         GgufTensorInfo tensor;
         tensor.name = name.value();
@@ -214,7 +298,7 @@ Result<GgufInfo> inspect_gguf(const std::string& path) {
         if (!read_pod(input, n_dims)) {
             return Result<GgufInfo>::failure("unexpected end of file while reading GGUF tensor dimensions");
         }
-        if (n_dims > 16) {
+        if (n_dims > kMaxTensorDimensions) {
             return Result<GgufInfo>::failure("GGUF tensor has too many dimensions");
         }
         for (std::uint32_t dim = 0; dim < n_dims; ++dim) {
@@ -239,8 +323,25 @@ Result<GgufInfo> inspect_gguf(const std::string& path) {
         info.tensor_infos.push_back(tensor);
     }
 
-    const auto current = static_cast<std::uint64_t>(input.tellg());
-    info.data_start_offset = align_offset(current, 32);
+    const auto current_position = input.tellg();
+    if (current_position < 0) {
+        return Result<GgufInfo>::failure("failed to determine GGUF tensor data position");
+    }
+    const auto data_start = align_offset(static_cast<std::uint64_t>(current_position), 32);
+    if (!data_start.ok()) {
+        return Result<GgufInfo>::failure(data_start.error());
+    }
+    info.data_start_offset = data_start.value();
+
+    for (const auto& tensor : info.tensor_infos) {
+        if (tensor.data_offset > std::numeric_limits<std::uint64_t>::max() - info.data_start_offset) {
+            return Result<GgufInfo>::failure("GGUF tensor offset overflow: " + tensor.name);
+        }
+        const auto absolute_offset = info.data_start_offset + tensor.data_offset;
+        if (absolute_offset > file_size || tensor.byte_size > file_size - absolute_offset) {
+            return Result<GgufInfo>::failure("GGUF tensor range exceeds file: " + tensor.name);
+        }
+    }
 
     return Result<GgufInfo>::success(info);
 }
@@ -262,7 +363,25 @@ Result<std::vector<std::uint8_t>> read_gguf_tensor_data(
         return Result<std::vector<std::uint8_t>>::failure("model not found: " + path);
     }
 
+    std::error_code file_error;
+    const auto file_size = std::filesystem::file_size(path, file_error);
+    if (file_error) {
+        return Result<std::vector<std::uint8_t>>::failure("failed to determine model size: " + path);
+    }
+    if (it->data_offset > std::numeric_limits<std::uint64_t>::max() - info.data_start_offset) {
+        return Result<std::vector<std::uint8_t>>::failure("GGUF tensor offset overflow: " + tensor_name);
+    }
     const auto absolute_offset = info.data_start_offset + it->data_offset;
+    if (absolute_offset > file_size || it->byte_size > file_size - absolute_offset) {
+        return Result<std::vector<std::uint8_t>>::failure("GGUF tensor range exceeds file: " + tensor_name);
+    }
+    if (absolute_offset > static_cast<std::uint64_t>(std::numeric_limits<std::streamoff>::max())) {
+        return Result<std::vector<std::uint8_t>>::failure("GGUF tensor offset is too large to seek: " + tensor_name);
+    }
+    if (it->byte_size > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()) ||
+        it->byte_size > static_cast<std::uint64_t>(std::numeric_limits<std::streamsize>::max())) {
+        return Result<std::vector<std::uint8_t>>::failure("GGUF tensor is too large for this platform: " + tensor_name);
+    }
     input.seekg(static_cast<std::streamoff>(absolute_offset), std::ios::beg);
     if (!input) {
         return Result<std::vector<std::uint8_t>>::failure("failed to seek to tensor data: " + tensor_name);

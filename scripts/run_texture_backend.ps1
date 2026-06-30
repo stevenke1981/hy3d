@@ -68,13 +68,6 @@ if ($backend -and (Test-Path -LiteralPath $backend)) {
     exit $LASTEXITCODE
 }
 
-Write-Host "No usable texture backend script was found."
-Write-Host "Would run official Hunyuan3D-Paint Python pipeline with:"
-Write-Host "  mesh: $MeshPath"
-Write-Host "  image: $ImagePath"
-Write-Host "  out: $OutputPath"
-if ($ModelPath) {
-    Write-Host "  model-path: $ModelPath"
-}
-Write-Host "Set HY3D_TEXTURE_BACKEND to a local texture script or keep scripts/hy3d_texture.py in place."
-exit 0
+Write-Error "No usable texture backend script was found: $backend" -ErrorAction Continue
+Write-Error "Set HY3D_TEXTURE_BACKEND to an existing texture script or keep scripts/hy3d_texture.py in place." -ErrorAction Continue
+exit 10

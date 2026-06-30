@@ -93,6 +93,7 @@ def main() -> int:
     steps = args.steps if args.steps is not None else steps_for_quality(args.quality)
     log_path = pathlib.Path(args.log).resolve() if args.log else sidecar_path(output_path, ".log.txt")
     metadata_path = pathlib.Path(args.metadata).resolve() if args.metadata else sidecar_path(output_path, ".json")
+    partial_output_path = pathlib.Path(str(output_path) + ".partial")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -128,7 +129,7 @@ def main() -> int:
         metadata["elapsed_seconds"] = round(elapsed, 3)
         if error:
             metadata["error"] = error
-        if output_path.exists():
+        if status == "ok" and output_path.exists():
             metadata["output_size"] = output_path.stat().st_size
         write_metadata(metadata_path, metadata)
         print(f"metadata: {metadata_path}")
@@ -218,12 +219,21 @@ def main() -> int:
 
         with torch.inference_mode():
             mesh = pipeline(image=image_arg, num_inference_steps=steps)[0]
-        mesh.export(str(output_path))
+        partial_output_path.unlink(missing_ok=True)
+        mesh.export(str(partial_output_path))
+        if not partial_output_path.exists() or partial_output_path.stat().st_size == 0:
+            raise RuntimeError(f"mesh exporter did not produce a valid file: {partial_output_path}")
+        partial_output_path.replace(output_path)
 
         elapsed = time.perf_counter() - started
         print(f"done: {output_path}")
         print(f"elapsed_seconds: {elapsed:.2f}")
         return finish("ok", 0)
+    except Exception as exc:
+        partial_output_path.unlink(missing_ok=True)
+        message = f"unhandled generation error: {exc}"
+        print(f"error: {message}", file=sys.stderr)
+        return finish("error", 99, message)
     finally:
         sys.stdout = stdout
         sys.stderr = stderr

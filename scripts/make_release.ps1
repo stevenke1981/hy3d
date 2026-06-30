@@ -1,5 +1,7 @@
 param(
     [string] $ReleaseDir = ".\dist\hy3d-win-cuda",
+    [string] $BuildDir = ".\build",
+    [switch] $IncludeSource,
     [switch] $IncludeModels,
     [switch] $IncludeVenv,
     [switch] $Zip
@@ -8,9 +10,57 @@ param(
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
-$release = Join-Path $root $ReleaseDir
+$root = [System.IO.Path]::GetFullPath($root)
 
-cmake --build (Join-Path $root "build") --config Release
+function Resolve-RepoPath {
+    param([string] $Path)
+
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        return [System.IO.Path]::GetFullPath($Path)
+    }
+    return [System.IO.Path]::GetFullPath((Join-Path $root $Path))
+}
+
+function Get-Sha256 {
+    param([string] $Path)
+
+    $stream = [System.IO.File]::OpenRead($Path)
+    $sha256 = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = $sha256.ComputeHash($stream)
+        return ([System.BitConverter]::ToString($bytes)).Replace("-", "")
+    } finally {
+        $sha256.Dispose()
+        $stream.Dispose()
+    }
+}
+
+function Get-RelativePath {
+    param(
+        [string] $BasePath,
+        [string] $Path
+    )
+
+    $base = [System.IO.Path]::GetFullPath($BasePath).TrimEnd("\") + "\"
+    $target = [System.IO.Path]::GetFullPath($Path)
+    $baseUri = New-Object System.Uri($base)
+    $targetUri = New-Object System.Uri($target)
+    return [System.Uri]::UnescapeDataString($baseUri.MakeRelativeUri($targetUri).ToString()).Replace("/", "\")
+}
+
+$release = Resolve-RepoPath $ReleaseDir
+$build = Resolve-RepoPath $BuildDir
+
+if ($release -eq $root -or $release -eq [System.IO.Path]::GetPathRoot($release)) {
+    throw "unsafe release directory: $release"
+}
+
+cmake -S $root -B $build
+if ($LASTEXITCODE -ne 0) {
+    exit $LASTEXITCODE
+}
+
+cmake --build $build --config Release --parallel
 if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
 }
@@ -26,7 +76,15 @@ New-Item -ItemType Directory -Force -Path `
     (Join-Path $release "tools"), `
     (Join-Path $release "third_party") | Out-Null
 
-Copy-Item -LiteralPath (Join-Path $root "build\Release\hy3d.exe") -Destination (Join-Path $release "bin\hy3d.exe")
+$executable = @(
+    (Join-Path $build "Release\hy3d.exe"),
+    (Join-Path $build "hy3d.exe")
+) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if (-not $executable) {
+    throw "release executable not found under build directory: $build"
+}
+
+Copy-Item -LiteralPath $executable -Destination (Join-Path $release "bin\hy3d.exe")
 Copy-Item -LiteralPath (Join-Path $root "scripts\hy3d_generate.py") -Destination (Join-Path $release "scripts\hy3d_generate.py")
 Copy-Item -LiteralPath (Join-Path $root "scripts\hy3d_texture.py") -Destination (Join-Path $release "scripts\hy3d_texture.py")
 Copy-Item -LiteralPath (Join-Path $root "scripts\run_python_backend.ps1") -Destination (Join-Path $release "scripts\run_python_backend.ps1")
@@ -42,7 +100,10 @@ Copy-Item -LiteralPath (Join-Path $root "spec.md") -Destination (Join-Path $rele
 Copy-Item -LiteralPath (Join-Path $root "plan.md") -Destination (Join-Path $release "plan.md")
 
 $sourceRoot = Join-Path $root "third_party\Hunyuan3D-2.1"
-if (Test-Path -LiteralPath $sourceRoot) {
+if ($IncludeSource) {
+    if (-not (Test-Path -LiteralPath $sourceRoot)) {
+        throw "source checkout not found for -IncludeSource: $sourceRoot"
+    }
     $targetSource = Join-Path $release "third_party\Hunyuan3D-2.1"
     New-Item -ItemType Directory -Force -Path $targetSource | Out-Null
     foreach ($name in @("hy3dshape", "hy3dpaint", "torchvision_fix.py", "README.md", "LICENSE", "Notice.txt", "demo.py")) {
@@ -71,8 +132,10 @@ if ($IncludeVenv) {
 @echo off
 setlocal
 cd /d "%~dp0"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\setup_hy3d_python.ps1"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\download_hy3d_models.ps1"
+if errorlevel 1 exit /b %errorlevel%
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\setup_hy3d_python.ps1"
+if errorlevel 1 exit /b %errorlevel%
 endlocal
 '@ | Set-Content -Path (Join-Path $release "hy3d-setup.cmd") -Encoding ASCII
 
@@ -119,15 +182,15 @@ Advanced usage:
 .\hy3d.cmd texture --backend python --mesh .\outputs\shape.glb --image .\input.png --out .\outputs\textured.glb --model-path .\models\Hunyuan3D-2.1 --resolution 512 --max-views 6 --no-remesh --device cuda
 ```
 
-Models are not bundled by default. `hy3d-setup.cmd` installs Python dependencies, builds the Windows paint extensions, and downloads the official shape/PBR model files. To build a mostly offline package from a prepared checkout, run `scripts\make_release.ps1 -IncludeModels -IncludeVenv`.
+Source and models are not bundled by default. `hy3d-setup.cmd` downloads the pinned official source/model files, installs Python dependencies, and builds the Windows paint extensions. To build a mostly offline package from a prepared checkout, run `scripts\make_release.ps1 -IncludeSource -IncludeModels -IncludeVenv`.
 '@ | Set-Content -Path (Join-Path $release "README_RELEASE.md") -Encoding UTF8
 
 $hashes = Get-ChildItem -LiteralPath $release -Recurse -File |
     Where-Object { $_.FullName -notlike "*.zip" } |
     ForEach-Object {
-        $hash = Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256
-        $relative = Resolve-Path -LiteralPath $_.FullName -Relative
-        "$($hash.Hash)  $relative"
+        $hash = Get-Sha256 -Path $_.FullName
+        $relative = Get-RelativePath -BasePath $release -Path $_.FullName
+        "$hash  $relative"
     }
 $hashes | Set-Content -Path (Join-Path $release "SHA256SUMS.txt") -Encoding ASCII
 

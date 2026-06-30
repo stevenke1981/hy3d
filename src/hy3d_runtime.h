@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace hy3d {
@@ -128,6 +129,7 @@ public:
 
 private:
     std::vector<RuntimeTensor> tensors_;
+    std::unordered_map<std::string, std::size_t> tensor_indices_;
 };
 
 class DiffusionScheduler {

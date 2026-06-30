@@ -68,15 +68,6 @@ if ($backend -and (Test-Path -LiteralPath $backend)) {
     exit $LASTEXITCODE
 }
 
-Write-Host "No usable Python backend script was found."
-Write-Host "Would run official Hunyuan3D Python pipeline with:"
-Write-Host "  image: $ImagePath"
-Write-Host "  out: $OutputPath"
-if ($ModelPath) {
-    Write-Host "  model-path: $ModelPath"
-}
-if ($LowVram) {
-    Write-Host "  low-vram: true"
-}
-Write-Host "Set HY3D_PYTHON_BACKEND to a local generate.py or keep scripts/hy3d_generate.py in place."
-exit 0
+Write-Error "No usable Python backend script was found: $backend" -ErrorAction Continue
+Write-Error "Set HY3D_PYTHON_BACKEND to an existing generate.py or keep scripts/hy3d_generate.py in place." -ErrorAction Continue
+exit 10

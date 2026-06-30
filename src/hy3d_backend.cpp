@@ -1,19 +1,12 @@
 #include "hy3d_backend.h"
 
+#include "backend_paths.h"
 #include "process_runner.h"
 
 #include <filesystem>
 
 namespace hy3d {
 namespace {
-
-std::filesystem::path script_path() {
-    return std::filesystem::current_path() / "scripts" / "run_python_backend.ps1";
-}
-
-std::filesystem::path texture_script_path() {
-    return std::filesystem::current_path() / "scripts" / "run_texture_backend.ps1";
-}
 
 Result<int> validate_generate_request(const GenerateRequest& request) {
     if (request.image_path.empty()) {
@@ -89,13 +82,13 @@ Result<int> run_generate(const GenerateRequest& request) {
         return validation;
     }
 
-    if (request.dry_run) {
-        return Result<int>::success(0);
+    const auto script = resolve_backend_script("run_python_backend.ps1");
+    if (!script.ok()) {
+        return Result<int>::failure(script.error());
     }
 
-    const auto script = script_path();
-    if (!std::filesystem::exists(script)) {
-        return Result<int>::failure("python backend script not found: " + script.string());
+    if (request.dry_run) {
+        return Result<int>::success(0);
     }
 
     ProcessCommand command;
@@ -105,7 +98,7 @@ Result<int> run_generate(const GenerateRequest& request) {
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        script.string(),
+        script.value().string(),
         "-ImagePath",
         request.image_path,
         "-OutputPath",
@@ -148,13 +141,13 @@ Result<int> run_texture(const TextureRequest& request) {
         return validation;
     }
 
-    if (request.dry_run) {
-        return Result<int>::success(0);
+    const auto script = resolve_backend_script("run_texture_backend.ps1");
+    if (!script.ok()) {
+        return Result<int>::failure(script.error());
     }
 
-    const auto script = texture_script_path();
-    if (!std::filesystem::exists(script)) {
-        return Result<int>::failure("texture backend script not found: " + script.string());
+    if (request.dry_run) {
+        return Result<int>::success(0);
     }
 
     ProcessCommand command;
@@ -164,7 +157,7 @@ Result<int> run_texture(const TextureRequest& request) {
         "-ExecutionPolicy",
         "Bypass",
         "-File",
-        script.string(),
+        script.value().string(),
         "-MeshPath",
         request.mesh_path,
         "-ImagePath",

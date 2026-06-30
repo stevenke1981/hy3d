@@ -178,6 +178,7 @@ std::vector<float> token_slice(const std::vector<float>& values, std::size_t tok
 } // namespace
 
 void HunyuanDitModel::add_tensor(RuntimeTensor tensor) {
+    tensor_indices_.emplace(tensor.name, tensors_.size());
     tensors_.push_back(std::move(tensor));
 }
 
@@ -190,13 +191,11 @@ bool HunyuanDitModel::has_tensor(const std::string& name) const {
 }
 
 const RuntimeTensor* HunyuanDitModel::find_tensor(const std::string& name) const {
-    const auto it = std::find_if(tensors_.begin(), tensors_.end(), [&](const RuntimeTensor& tensor) {
-        return tensor.name == name;
-    });
-    if (it == tensors_.end()) {
+    const auto it = tensor_indices_.find(name);
+    if (it == tensor_indices_.end() || it->second >= tensors_.size()) {
         return nullptr;
     }
-    return &(*it);
+    return &tensors_[it->second];
 }
 
 const RuntimeTensor* HunyuanDitModel::find_mapped_tensor(const std::string& prefix, const std::string& canonical_suffix) const {

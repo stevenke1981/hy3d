@@ -51,6 +51,43 @@ class ConverterTests(unittest.TestCase):
         self.assertEqual(converter.map_tensor_name("state_dict.model.blocks.0.weight"), "blocks.0.weight")
         self.assertEqual(converter.map_tensor_name("module.model.final_layer.bias"), "final_layer.bias")
 
+    def test_checkpoint_loader_uses_weights_only_by_default(self):
+        converter = load_converter()
+        calls = []
+
+        class FakeTorch:
+            @staticmethod
+            def load(path, **kwargs):
+                calls.append((path, kwargs))
+                return {}
+
+        converter.import_torch = lambda: FakeTorch
+        list(converter.iter_checkpoint_tensors(pathlib.Path("model.ckpt"), "f16"))
+
+        self.assertTrue(calls)
+        self.assertIs(calls[0][1]["weights_only"], True)
+
+    def test_unsafe_pickle_requires_explicit_opt_in(self):
+        converter = load_converter()
+        calls = []
+
+        class FakeTorch:
+            @staticmethod
+            def load(path, **kwargs):
+                calls.append((path, kwargs))
+                return {}
+
+        converter.import_torch = lambda: FakeTorch
+        list(
+            converter.iter_checkpoint_tensors(
+                pathlib.Path("model.ckpt"),
+                "f16",
+                allow_unsafe_pickle=True,
+            )
+        )
+
+        self.assertIs(calls[0][1]["weights_only"], False)
+
 
 if __name__ == "__main__":
     unittest.main()

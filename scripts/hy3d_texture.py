@@ -125,6 +125,7 @@ def main() -> int:
     source_root, model_path = resolve_paths(args)
     log_path = pathlib.Path(args.log).resolve() if args.log else sidecar_path(output_path, ".log.txt")
     metadata_path = pathlib.Path(args.metadata).resolve() if args.metadata else sidecar_path(output_path, ".json")
+    partial_output_path = pathlib.Path(str(output_path) + ".partial")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -158,7 +159,7 @@ def main() -> int:
         metadata["elapsed_seconds"] = round(elapsed, 3)
         if error:
             metadata["error"] = error
-        if output_path.exists():
+        if status == "ok" and output_path.exists():
             metadata["output_size"] = output_path.stat().st_size
         write_metadata(metadata_path, metadata)
         print(f"metadata: {metadata_path}")
@@ -264,17 +265,20 @@ def main() -> int:
             print(f"error: {message}", file=sys.stderr)
             return finish("error", 10, message)
         scene = trimesh.load(str(produced_obj), force="scene")
-        scene.export(str(output_path))
-        if not output_path.exists():
-            message = f"failed to export textured GLB: {output_path}"
+        partial_output_path.unlink(missing_ok=True)
+        scene.export(str(partial_output_path))
+        if not partial_output_path.exists() or partial_output_path.stat().st_size == 0:
+            message = f"failed to export textured GLB: {partial_output_path}"
             print(f"error: {message}", file=sys.stderr)
             return finish("error", 11, message)
+        partial_output_path.replace(output_path)
 
         elapsed = time.perf_counter() - started
         print(f"done: {output_path}")
         print(f"elapsed_seconds: {elapsed:.2f}")
         return finish("ok", 0)
     except Exception as exc:
+        partial_output_path.unlink(missing_ok=True)
         message = f"unhandled texture error: {exc}"
         print(f"error: {message}", file=sys.stderr)
         return finish("error", 99, message)

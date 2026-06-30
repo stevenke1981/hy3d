@@ -223,20 +223,20 @@ int main(int argc, char** argv) {
         std::vector<float> latents(latent_values, 0.0f);
         std::vector<float> context(context_values, 0.0f);
         if (!options.latent_path.empty()) {
-            const auto loaded = read_f32_file(options.latent_path, latent_values);
+            auto loaded = read_f32_file(options.latent_path, latent_values);
             if (!loaded.ok()) {
                 std::cerr << "error: " << loaded.error() << "\n";
                 return 1;
             }
-            latents = loaded.value();
+            latents = loaded.take_value();
         }
         if (!options.context_path.empty()) {
-            const auto loaded = read_f32_file(options.context_path, context_values);
+            auto loaded = read_f32_file(options.context_path, context_values);
             if (!loaded.ok()) {
                 std::cerr << "error: " << loaded.error() << "\n";
                 return 1;
             }
-            context = loaded.value();
+            context = loaded.take_value();
         }
 
         const auto output = model.value().run_dit_forward_scaffold(

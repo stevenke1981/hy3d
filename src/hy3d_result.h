@@ -41,6 +41,13 @@ public:
         return value_;
     }
 
+    [[nodiscard]] T take_value() {
+        if (!ok_) {
+            throw std::logic_error("Result has no value");
+        }
+        return std::move(value_);
+    }
+
     const std::string& error() const {
         if (ok_) {
             throw std::logic_error("Result has no error");

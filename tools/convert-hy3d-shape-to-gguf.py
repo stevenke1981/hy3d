@@ -300,13 +300,32 @@ def tensor_to_numpy(value: Any, outtype: str) -> np.ndarray:
     return normalize_array(tensor.contiguous().numpy(), outtype)
 
 
-def iter_checkpoint_tensors(checkpoint_path: pathlib.Path, outtype: str) -> Iterable[TensorRecord]:
+def iter_checkpoint_tensors(
+    checkpoint_path: pathlib.Path,
+    outtype: str,
+    allow_unsafe_pickle: bool = False,
+) -> Iterable[TensorRecord]:
     torch = import_torch()
-    load_kwargs: dict[str, Any] = {"map_location": "cpu"}
+    load_kwargs: dict[str, Any] = {
+        "map_location": "cpu",
+        "weights_only": not allow_unsafe_pickle,
+    }
     try:
-        checkpoint = torch.load(checkpoint_path, weights_only=False, mmap=True, **load_kwargs)
-    except TypeError:
-        checkpoint = torch.load(checkpoint_path, weights_only=False, **load_kwargs)
+        checkpoint = torch.load(checkpoint_path, mmap=True, **load_kwargs)
+    except TypeError as mmap_error:
+        try:
+            checkpoint = torch.load(checkpoint_path, **load_kwargs)
+        except TypeError as weights_only_error:
+            if not allow_unsafe_pickle:
+                raise RuntimeError(
+                    "installed PyTorch does not support safe weights_only checkpoint loading; "
+                    "upgrade PyTorch or explicitly pass --allow-unsafe-pickle for a trusted checkpoint"
+                ) from weights_only_error
+            legacy_kwargs = {"map_location": "cpu"}
+            try:
+                checkpoint = torch.load(checkpoint_path, **legacy_kwargs)
+            except TypeError:
+                raise mmap_error
     state_dict = select_state_dict(checkpoint)
 
     seen: set[str] = set()
@@ -353,6 +372,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--name", default="Hunyuan3D-2.1 Shape", help="GGUF model name metadata.")
     parser.add_argument("--alignment", type=int, default=DEFAULT_ALIGNMENT, help="GGUF tensor data alignment.")
     parser.add_argument("--dry-run", action="store_true", help="Load checkpoint and print tensor summary without writing.")
+    parser.add_argument(
+        "--allow-unsafe-pickle",
+        action="store_true",
+        help="Allow arbitrary pickle objects from a trusted checkpoint. Disabled by default.",
+    )
     return parser.parse_args(argv)
 
 
@@ -365,8 +389,20 @@ def main(argv: list[str]) -> int:
         print(f"error: input checkpoint not found: {input_path}", file=sys.stderr)
         return 2
 
+    if args.allow_unsafe_pickle:
+        print(
+            "warning: unsafe pickle loading is enabled; only continue with a trusted checkpoint",
+            file=sys.stderr,
+        )
+
     print(f"loading checkpoint: {input_path}")
-    tensors = list(iter_checkpoint_tensors(input_path, args.outtype))
+    tensors = list(
+        iter_checkpoint_tensors(
+            input_path,
+            args.outtype,
+            allow_unsafe_pickle=args.allow_unsafe_pickle,
+        )
+    )
     if not tensors:
         print("error: checkpoint did not contain floating point tensors", file=sys.stderr)
         return 3

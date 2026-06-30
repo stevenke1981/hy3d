@@ -27,12 +27,12 @@ Create a redistributable Windows CUDA folder:
 .\scripts\make_release.ps1
 ```
 
-The output is `dist\hy3d-win-cuda`. It contains `hy3d-setup.cmd`, `hy3d-generate-smoke.cmd`, `hy3d-texture-smoke.cmd`, and `hy3d.cmd`. Setup installs the Python backend, builds the Hunyuan3D-Paint Windows extensions, and downloads official shape/PBR model files.
+The output is `dist\hy3d-win-cuda`. It contains `hy3d-setup.cmd`, `hy3d-generate-smoke.cmd`, `hy3d-texture-smoke.cmd`, and `hy3d.cmd`. Setup downloads the pinned Hunyuan3D source/model revisions, installs the Python backend, verifies the RealESRGAN checkpoint hash, and builds the Hunyuan3D-Paint Windows extensions. The release script configures its build directory automatically.
 
 For a mostly offline package from an already prepared checkout:
 
 ```powershell
-.\scripts\make_release.ps1 -IncludeModels -IncludeVenv -Zip
+.\scripts\make_release.ps1 -IncludeSource -IncludeModels -IncludeVenv -Zip
 ```
 
 ## Reusable Image-to-3D Script
@@ -72,12 +72,19 @@ Preset steps:
 
 ## Download Hunyuan3D Models
 
-Use the current Hugging Face CLI, `hf`. The older `huggingface-cli` command is deprecated.
+The reproducible path is:
+
+```powershell
+.\scripts\download_hy3d_models.ps1
+```
+
+It checks out source revision `82920d643c0dc2f7bfd7255f45f62d386edfe60c`, downloads model revision `0b94677654c57bb9a6b6845cd7b704ccf551d327`, and verifies the RealESRGAN SHA-256. To download manually, use the current Hugging Face CLI, `hf`, and pass the same revision. The older `huggingface-cli` command is deprecated.
 
 Shape generation checkpoints:
 
 ```powershell
 hf download tencent/Hunyuan3D-2.1 `
+  --revision 0b94677654c57bb9a6b6845cd7b704ccf551d327 `
   README.md LICENSE Notice.txt demo.py `
   "hunyuan3d-dit-v2-1/config.yaml" `
   "hunyuan3d-dit-v2-1/model.fp16.ckpt" `
@@ -86,12 +93,13 @@ hf download tencent/Hunyuan3D-2.1 `
   --local-dir .\models\Hunyuan3D-2.1
 ```
 
-The downloaded `.ckpt` files are official PyTorch checkpoints, not GGUF files. Use them with the Python backend first, then convert them to GGUF when the converter is implemented.
+The downloaded `.ckpt` files are official PyTorch checkpoints, not GGUF files. Use them directly with the Python backend or convert the shape checkpoint with the GGUF converter below.
 
 PBR texture checkpoints:
 
 ```powershell
 hf download tencent/Hunyuan3D-2.1 `
+  --revision 0b94677654c57bb9a6b6845cd7b704ccf551d327 `
   --local-dir .\models\Hunyuan3D-2.1 `
   --include "hunyuan3d-paintpbr-v2-1/*"
 ```
@@ -130,6 +138,8 @@ Convert the Hunyuan3D shape DiT checkpoint:
   --output .\models\hy3d-shape-f16.gguf `
   --outtype f16
 ```
+
+Checkpoint loading is safe by default (`torch.load(weights_only=True)`). Only for a trusted legacy checkpoint that cannot be loaded safely, add `--allow-unsafe-pickle`; this explicitly enables arbitrary pickle deserialization.
 
 Inspect the result:
 
@@ -277,6 +287,7 @@ PBR texture generation, verified on this machine:
 First-time setup:
 
 ```powershell
+.\scripts\download_hy3d_models.ps1
 .\scripts\setup_hy3d_python.ps1
 ```
 

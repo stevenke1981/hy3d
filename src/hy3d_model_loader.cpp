@@ -3,6 +3,9 @@
 #include "hy3d_gguf.h"
 
 #include <algorithm>
+#include <fstream>
+#include <limits>
+#include <unordered_map>
 #include <utility>
 
 namespace hy3d {
@@ -22,29 +25,52 @@ Result<HunyuanDitModel> load_named_tensors_from_gguf(const std::string& path, co
         return Result<HunyuanDitModel>::failure(info.error());
     }
 
+    std::unordered_map<std::string, const GgufTensorInfo*> tensor_index;
+    tensor_index.reserve(info.value().tensor_infos.size());
+    for (const auto& tensor : info.value().tensor_infos) {
+        tensor_index.emplace(tensor.name, &tensor);
+    }
+
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        return Result<HunyuanDitModel>::failure("model not found: " + path);
+    }
+
     HunyuanDitModel model;
     for (const auto& name : names) {
-        const auto tensor_info = std::find_if(
-            info.value().tensor_infos.begin(),
-            info.value().tensor_infos.end(),
-            [&](const GgufTensorInfo& tensor) { return tensor.name == name; });
-        if (tensor_info == info.value().tensor_infos.end()) {
+        const auto indexed = tensor_index.find(name);
+        if (indexed == tensor_index.end()) {
             if (is_optional_tensor_name(name)) {
                 continue;
             }
             return Result<HunyuanDitModel>::failure("required block tensor not found: " + name);
         }
+        const auto& tensor_info = *indexed->second;
 
-        const auto bytes = read_gguf_tensor_data(path, info.value(), name);
-        if (!bytes.ok()) {
-            return Result<HunyuanDitModel>::failure(bytes.error());
+        if (tensor_info.byte_size > static_cast<std::uint64_t>(std::numeric_limits<std::size_t>::max()) ||
+            tensor_info.byte_size > static_cast<std::uint64_t>(std::numeric_limits<std::streamsize>::max())) {
+            return Result<HunyuanDitModel>::failure("GGUF tensor is too large for this platform: " + name);
         }
 
         RuntimeTensor runtime_tensor;
-        runtime_tensor.name = tensor_info->name;
-        runtime_tensor.type = tensor_info->type;
-        runtime_tensor.dimensions = tensor_info->dimensions;
-        runtime_tensor.bytes = bytes.value();
+        runtime_tensor.name = tensor_info.name;
+        runtime_tensor.type = tensor_info.type;
+        runtime_tensor.dimensions = tensor_info.dimensions;
+        runtime_tensor.bytes.resize(static_cast<std::size_t>(tensor_info.byte_size));
+
+        const auto absolute_offset = info.value().data_start_offset + tensor_info.data_offset;
+        input.seekg(static_cast<std::streamoff>(absolute_offset), std::ios::beg);
+        if (!input) {
+            return Result<HunyuanDitModel>::failure("failed to seek to tensor data: " + name);
+        }
+        if (!runtime_tensor.bytes.empty()) {
+            input.read(
+                reinterpret_cast<char*>(runtime_tensor.bytes.data()),
+                static_cast<std::streamsize>(runtime_tensor.bytes.size()));
+            if (!input) {
+                return Result<HunyuanDitModel>::failure("unexpected end of file while reading tensor: " + name);
+            }
+        }
         model.add_tensor(std::move(runtime_tensor));
     }
 

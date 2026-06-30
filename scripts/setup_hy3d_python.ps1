@@ -20,7 +20,7 @@ uv pip install --python $python `
   scipy==1.14.1 `
   einops==0.8.0 `
   opencv-python==4.10.0.84 `
-  pillow `
+  pillow==12.2.0 `
   trimesh==4.4.7 `
   pymeshlab==2022.2.post3 `
   pygltflib==1.16.3 `
@@ -43,7 +43,7 @@ uv pip install --python $python `
   configargparse==1.7 `
   psutil==6.0.0 `
   cupy-cuda12x==13.4.1 `
-  pythreejs `
+  pythreejs==2.4.2 `
   pybind11==2.13.4 `
   ninja==1.11.1.1
 
