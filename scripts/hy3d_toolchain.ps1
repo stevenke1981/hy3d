@@ -14,7 +14,8 @@ function Resolve-Hy3dVersionedRoot {
         [string] $ExplicitPath,
         [Parameter(Mandatory = $true)][string] $RequiredRelativePath,
         [Parameter(Mandatory = $true)][string] $Kind,
-        [string] $BasePath
+        [string] $BasePath,
+        [version] $MaximumVersion
     )
 
     if ($ExplicitPath) {
@@ -30,11 +31,15 @@ function Resolve-Hy3dVersionedRoot {
     }
 
     $candidate = Get-ChildItem -LiteralPath $BasePath -Directory |
-        Where-Object { Test-Path -LiteralPath (Join-Path $_.FullName $RequiredRelativePath) } |
+        Where-Object {
+            (Test-Path -LiteralPath (Join-Path $_.FullName $RequiredRelativePath)) -and
+            (-not $MaximumVersion -or (Get-Hy3dVersion $_.Name) -le $MaximumVersion)
+        } |
         Sort-Object { Get-Hy3dVersion $_.Name } -Descending |
         Select-Object -First 1
     if (-not $candidate) {
-        throw "No valid $Kind toolchain under '$BasePath' (expected '$RequiredRelativePath')."
+        $versionHint = if ($MaximumVersion) { " at or below $MaximumVersion" } else { "" }
+        throw "No valid $Kind toolchain$versionHint under '$BasePath' (expected '$RequiredRelativePath')."
     }
     return $candidate.FullName
 }

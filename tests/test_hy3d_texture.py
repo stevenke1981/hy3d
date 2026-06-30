@@ -21,6 +21,60 @@ def load_texture_module():
 
 
 class TextureScriptTests(unittest.TestCase):
+    def test_preflight_validates_view_count_before_importing_dependencies(self):
+        module = load_texture_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            args = argparse.Namespace(max_views=5)
+            result = module.validate_preflight(
+                args,
+                root / "mesh.glb",
+                root / "image.png",
+                root / "source",
+                root / "models",
+            )
+            self.assertEqual(result[0], 2)
+            self.assertIn("between 6 and 12", result[1])
+
+    def test_dependency_import_failure_is_recorded(self):
+        module = load_texture_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            mesh_path = root / "input.glb"
+            image_path = root / "input.png"
+            output_path = root / "output.glb"
+            source_root = root / "source"
+            model_path = root / "models"
+            metadata_path = root / "output.json"
+            mesh_path.write_bytes(b"mesh")
+            image_path.write_bytes(b"image")
+            (model_path / "hunyuan3d-paintpbr-v2-1").mkdir(parents=True)
+            checkpoint = source_root / "hy3dpaint" / "ckpt" / "RealESRGAN_x4plus.pth"
+            checkpoint.parent.mkdir(parents=True)
+            checkpoint.write_bytes(b"checkpoint")
+            args = argparse.Namespace(
+                mesh=str(mesh_path), image=str(image_path), out=str(output_path),
+                source_root=str(source_root), model_path=str(model_path), device="cpu",
+                max_views=6, resolution=512, no_remesh=True, dry_run=False,
+                log=str(root / "output.log"), metadata=str(metadata_path),
+            )
+            module.parse_args = lambda: args
+            module.resolve_paths = lambda _: (source_root, model_path)
+            module.add_source_paths = lambda _: None
+            module.patch_snapshot_download = lambda _: None
+            module.install_bpy_stub_if_needed = lambda _: None
+            module.add_windows_dll_dirs = lambda _: None
+
+            def fail_import():
+                raise RuntimeError("paint import exploded")
+
+            module.load_dependencies = fail_import
+            result = module.main()
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            self.assertEqual(result, 8)
+            self.assertEqual(metadata["status"], "error")
+            self.assertIn("paint import exploded", metadata["error"])
+
     def test_export_error_preserves_existing_output_and_records_error(self):
         module = load_texture_module()
         with tempfile.TemporaryDirectory() as tmp:

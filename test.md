@@ -40,25 +40,40 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 | 組態／Gate | 結果 |
 |---|---:|
 | Debug build | 通過，所有 first-party targets 使用 `/W4 /permissive-` |
-| Debug 非 slow CTest | 21/21 通過，5.28 秒 |
+| Debug 非 slow CTest | 24/24 通過，6.74 秒 |
 | Release build | 通過 |
-| Release 非 slow CTest | 21/21 通過，3.27 秒 |
-| Clean release test | 1/1 通過，18.10 秒 |
+| Release 非 slow CTest | 24/24 通過，5.02 秒 |
+| Clean release test | 1/1 通過，18.06 秒（package closure 包含 resolved lock 與所有 runtime helper） |
 
-新增覆蓋：child process argv round-trip/launch failure、backend path、wrapper missing-backend、惡意 GGUF corpus、`Result::take_value()`、pinned local source checkout、safe checkpoint load、generate/texture export failure與原子輸出、共用 run lifecycle、依賴鎖、toolchain resolver、command handler、NumPy attention parity、tensor lookup benchmark、clean release configure/package。
+新增覆蓋：嚴格／bounded numeric parser、各 subcommand parser/handler、Python preflight/import/export/metadata-write failure、format-preserving partial output、136-package resolved lock、installed manifest、四類 NumPy parity、tensor lookup/真實 GGUF loader benchmark、clean release runtime-helper closure。
 
-仍未執行：本輪重新執行真實 CUDA shape/texture、完整線上 release setup、真實模型 native parity、loader peak RSS/時間 benchmark。既有 README 中的歷史 GPU smoke 紀錄不視為本輪驗收。
+仍未執行：從全新 release zip 開始的完整線上 source/model 下載與全新 venv 建立。其餘 extension rebuild、真實 CUDA shape/texture、真實 GGUF load/peak RSS/block forward 已在本輪重跑。
+
+### 2026-06-30 真實 CUDA/model 驗收
+
+| Gate | 結果 |
+|---|---:|
+| Shape smoke（5 steps, seed 42） | 通過，249.656 秒，11,250,604 bytes |
+| Shape independent parse | 1 geometry、312,722 vertices、624,760 faces |
+| Texture smoke（512, 6 views, no-remesh） | 通過，1284.569 秒，17,695,540 bytes |
+| Texture independent parse | 1 geometry、474,770 vertices、624,760 faces、PBRMaterial、UV/texture visual |
+| GGUF inspect/load | 6,101,566,528 bytes、752 tensors；0.090/2.532 秒 |
+| GGUF block-0 load peak RSS | 28 tensors；197,054,464 bytes |
+| Native block-0 forward | 3.385 秒；4096 outputs；L1 17409.8 |
+| Paint extension rebuild | CUDA 12.1 + compatible MSVC 14.29 通過；MSVC 14.51 的 `cudafe++` crash 有 resolver regression |
+
+首次 shape 實跑曾在完成 diffusion/volume decode 後揭露 `output.glb.partial` 被 exporter 誤判為 `.partial` 格式；修正為 `output.partial.glb` 並加入 regression test 後，shape 與 texture 皆以同一原子輸出流程完成。
 
 ## 2. 現有覆蓋與缺口
 
 | 區域 | 現有覆蓋 | 主要缺口 |
 |---|---|---|
-| CLI | 常見 parse 成功/失敗 | 整數邊界、極大維度、各 subcommand property-based cases |
+| CLI | 各 command parser/handler、full-consumption、overflow、語意／allocation bounds | property-based argument generation |
 | Backend | request validation、dry-run、argv round-trip、launch failure、path resolver、wrapper 非零失敗 | 真實 Python backend 非零/缺產物整合測試 |
 | GGUF | 最小合法檔、錯誤 magic、單 tensor、版本/count/array/offset/range/duplicate 負向 fixture | 持續 fuzzing 與更完整 GGML type corpus |
-| Runtime | 小型線性層、attention、block、scheduler、mesh fixture | 官方模型數值 parity、NaN/Inf、效能與記憶體 |
+| Runtime | NumPy attention/conditioned/timestep/final parity、真實 GGUF load/RSS/block forward | 完整官方 end-to-end native graph parity（native backend 尚未完成） |
 | Converter | writer metadata/tensor、name mapping、safe default/unsafe opt-in | 重複名稱、部分輸出清理、大模型 peak RSS |
-| Python pipelines | generate/texture export failure、error sidecar、舊輸出保留、partial cleanup | import/init/inference 各階段、metadata write failure、缺失 CUDA/model |
+| Python pipelines | preflight、import/export/metadata write failure、原子輸出、真實 CUDA shape/texture | constructor/inference fault injection 的更多細粒度 cases |
 | Release/setup | clean configure/build/package、pinned local source checkout | 真實線上下載、zip 解壓後 CUDA shape/texture smoke |
 
 ## 3. P0/P1 自動測試

@@ -22,6 +22,54 @@ def load_generate_module():
 
 
 class GenerateScriptTests(unittest.TestCase):
+    def test_preflight_reports_missing_image_without_importing_dependencies(self):
+        module = load_generate_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            args = argparse.Namespace(subfolder="shape")
+            result = module.validate_preflight(
+                args,
+                root / "missing.png",
+                root / "source",
+                root / "models",
+            )
+            self.assertEqual(result[0], 2)
+            self.assertIn("image not found", result[1])
+
+    def test_dependency_import_failure_is_recorded(self):
+        module = load_generate_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            image_path = root / "input.png"
+            output_path = root / "output.glb"
+            source_root = root / "source"
+            model_path = root / "models"
+            metadata_path = root / "output.json"
+            image_path.write_bytes(b"image")
+            source_root.mkdir()
+            checkpoint = model_path / "shape" / "model.fp16.ckpt"
+            checkpoint.parent.mkdir(parents=True)
+            checkpoint.write_bytes(b"checkpoint")
+            args = argparse.Namespace(
+                image=str(image_path), out=str(output_path), source_root=str(source_root),
+                model_path=str(model_path), subfolder="shape", device="cpu", quality="smoke",
+                steps=1, seed=42, low_vram=False, no_rembg=True, dry_run=False,
+                log=str(root / "output.log"), metadata=str(metadata_path),
+            )
+            module.parse_args = lambda: args
+            module.resolve_paths = lambda _: (source_root, model_path)
+            module.add_source_paths = lambda _: None
+
+            def fail_import():
+                raise RuntimeError("import exploded")
+
+            module.load_dependencies = fail_import
+            result = module.main()
+            metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+            self.assertEqual(result, 5)
+            self.assertEqual(metadata["status"], "error")
+            self.assertIn("import exploded", metadata["error"])
+
     def test_unhandled_inference_error_is_recorded_in_sidecar(self):
         module = load_generate_module()
         with tempfile.TemporaryDirectory() as tmp:

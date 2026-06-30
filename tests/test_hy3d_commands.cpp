@@ -9,7 +9,7 @@ int main() {
 
     std::ostringstream captured;
     auto* previous = std::cout.rdbuf(captured.rdbuf());
-    const auto result = hy3d::run_command(options);
+    const auto result = hy3d::run_help_command(options);
     std::cout.rdbuf(previous);
 
     if (result != 0 || captured.str().find("Usage:") == std::string::npos) {

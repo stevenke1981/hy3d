@@ -29,6 +29,10 @@ def sidecar_path(output_path: pathlib.Path, suffix: str) -> pathlib.Path:
     return pathlib.Path(str(output_path) + suffix)
 
 
+def partial_output_path(output_path: pathlib.Path) -> pathlib.Path:
+    return output_path.with_name(f"{output_path.stem}.partial{output_path.suffix}")
+
+
 def write_metadata(path: pathlib.Path, metadata: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = pathlib.Path(str(path) + ".partial")
@@ -77,7 +81,16 @@ class RunContext:
             self.metadata["error"] = error
         if status == "ok" and self.output_path.exists():
             self.metadata["output_size"] = self.output_path.stat().st_size
-        write_metadata(self.metadata_path, self.metadata)
+        try:
+            write_metadata(self.metadata_path, self.metadata)
+        except Exception as exc:
+            message = f"metadata write failed: {exc}"
+            self.metadata["status"] = "error"
+            self.metadata["exit_code"] = 98
+            self.metadata["error"] = message
+            self.metadata.pop("output_size", None)
+            print(f"error: {message}", file=sys.stderr)
+            return 98
         print(f"metadata: {self.metadata_path}")
         return code
 

@@ -2,13 +2,13 @@
 
 > 檢視日期：2026-06-30
 >
-> 方法：CBM 專案索引 `cbm+hunyuan`（51 files / 263 symbols / 592 edges）、關鍵符號與呼叫路徑檢視、Debug/Release 實際建置與 CTest。
+> 方法：CBM 專案索引 `cbm+hunyuan`（61 files / 349 symbols / 839 edges）、關鍵符號與呼叫路徑檢視、Debug/Release 實際建置、CTest 與真實 CUDA/model smoke。
 >
 > 原則：先處理安全與錯誤成功，再做大型模型的 I/O／查找優化，最後拆分結構與補齊工程化。
 
 ## 2026-06-30 實作狀態
 
-已完成 10 項：原有 8 項，加上 Windows toolchain 自動探測及 clang-tidy/sanitizer 品質閘門。CLI dispatcher、Python lifecycle、依賴清單、benchmark/parity 已有可驗收進展；未因核心測試通過而假定 CUDA 真實模型或 clean-machine 線上安裝已驗收。
+已完成 14/15 項。CLI parser/handler、Python pipeline orchestration、136-package transitive lock、真實 GGUF benchmark 與 NumPy parity 均已完成；真實 RTX 3070 Ti shape/texture smoke 也通過。唯一保留未勾選的是「從全新 release zip 執行線上 setup」的 clean-machine 閉環。
 
 ## P0：安全阻斷
 
@@ -80,13 +80,14 @@
   - 改善：release 腳本先 configure；明確下載／要求 pinned source revision；依序取得 source → 建 venv → 安裝依賴 → build extensions → 下載 models → smoke test。
   - 驗收：在乾淨暫存目錄由 release zip 開始，依 README 的三個命令可完成 setup、shape smoke、texture smoke。
   - 進度：獨立空 build 目錄 configure/build/package 已自動驗收；source/model revision、setup 順序已修正。線上下載後的 CUDA shape/texture smoke 尚未執行。
+  - 本輪進度：release 測試新增共用 lifecycle、toolchain、resolved lock、manifest writer 的 package closure gate；repo 內 pinned source/model 已完成真實 CUDA shape/texture smoke，custom rasterizer 與 mesh inpaint extension 亦實際重建成功。尚未從全新 release zip 重新下載約數 GB 模型並建立全新 venv，因此維持未勾選。
 
-- [ ] **鎖定依賴與下載來源**
+- [x] **鎖定依賴與下載來源**
   - 位置：`scripts/setup_hy3d_python.ps1`、`scripts/download_hy3d_models.ps1`
   - 證據：`pillow`、`pythreejs`、`uvx --from huggingface-hub` 未鎖版；Hugging Face download 未指定 revision；RealESRGAN 下載未驗證 checksum。
   - 改善：建立可審查 lock/constraints；model/source 固定 revision；小型二進位資產驗 SHA-256；metadata 記錄實際 revision 與依賴版本。
   - 驗收：同一 release manifest 可重建相同依賴集合，下載內容不符 hash 時立即失敗。
-  - 進度：新增 `requirements-hy3d.lock.txt` 與 `requirements-torch-cu124.lock.txt`，所有直接依賴皆精確鎖版且 setup 只讀取清單；source/model revision、uvx 與 RealESRGAN SHA-256 亦已固定。完整 transitive lock 與安裝後版本 manifest 仍待補。
+  - 進度：直接依賴作為 compile inputs，`requirements-win-cu124.lock.txt` 固定 Windows/Python 3.10/CUDA 12.4 的 136 個 transitive packages；`uv pip install --dry-run` 在空 venv 完整解析。setup 使用 resolved lock 並以 `write_dependency_manifest.py` 原子記錄 Python、平台、實際 packages、torch/CUDA、source/model revisions；model/source revision 與 RealESRGAN SHA-256 皆固定。
 
 - [x] **建立 Windows CI 與負向安全測試**
   - 位置：新增 `.github/workflows/ci.yml`（或專案既有 CI 平台）
@@ -95,30 +96,30 @@
 
 ## P2：可維護性與可攜性
 
-- [ ] **拆分大型 command dispatcher**
+- [x] **拆分大型 command dispatcher**
   - 位置：`src/hy3d_cli.cpp:78-632`、`src/main.cpp:38-310`
   - 改善：每個 subcommand 有獨立 parser/validator/handler；共用 bounded numeric parser；`main()` 只負責 dispatch 與 exit-code mapping。
   - 驗收：現有 CLI 行為與 help 相容；每個 subcommand 可獨立單元測試；移除重複 `try/stoi` 區塊。
-  - 進度：`main()` 已縮成 argv parse、錯誤映射與 `run_command()` dispatch，執行邏輯移至 `hy3d_commands.cpp` 並有直接單元測試；每個 subcommand handler 與重複 numeric parser 尚待再拆。
+  - 進度：每個 subcommand 都有獨立 parser 與 handler；`run_command()` 只做 switch dispatch。共用 parser 使用 full-consumption、型別 overflow、語意上限及 100M runtime-value allocation gate，拒絕 `5junk`、整數 overflow 與維度乘積爆量。
 
-- [ ] **拆分 Python pipeline orchestration**
+- [x] **拆分 Python pipeline orchestration**
   - 位置：`scripts/hy3d_generate.py`、`scripts/hy3d_texture.py`
   - 改善：把參數解析、環境探測、pipeline 建立、推論、輸出提交、metadata 分成小函式；共用 logging/sidecar 模組。
   - 驗收：不載入 torch/CUDA 即可測輸入驗證與錯誤 metadata；generate/texture 錯誤格式一致。
-  - 進度：共用 `RunContext` 已集中 tee、elapsed、stream cleanup 與原子 metadata commit，且可不載入 torch/CUDA 單測；pipeline 建立／推論函式仍待進一步抽離。
+  - 進度：generate/texture 都拆成 preflight、dependency load、pipeline create、inference/output commit；preflight 與 import failure 不需載入 torch/CUDA 即可測。共用 `RunContext` 處理 tee、elapsed、cleanup、原子 metadata，metadata write failure 固定回傳 98。
 
 - [x] **自動探測 Windows toolchain**
   - 位置：`scripts/build_hy3dpaint_windows.ps1`
   - 證據：CUDA 12.1、VS 18 路徑、MSVC 14.29、Windows SDK 10.0.26100.0、`python310.lib`、GPU arch 8.6 均硬編碼。
   - 改善：使用 `vswhere`、Python `sysconfig`、CUDA env/CMake 探測；GPU arch 允許參數化；輸出探測摘要。
   - 驗收：至少兩個已支援 VS/CUDA/Python 組合可重現建置；不支援組合給出具體診斷。
-  - 本輪驗收：resolver fixture 驗證多版本選擇、明確 override、無效路徑診斷及 `CUDA_PATH` 指向 `bin` 的正規化；實機解析 CUDA 12.1、MSVC 14.51.36231、SDK 10.0.26100.0，Python import library 由 `sysconfig` 取得，GPU arch 可參數化。
+  - 本輪驗收：resolver fixture 驗證多版本選擇、明確 override、無效路徑診斷及 `CUDA_PATH` 指向 `bin` 的正規化。實機發現 CUDA 12.1 + MSVC 14.51 會使 `cudafe++` 以 `0xC0000409` 崩潰；resolver 改選最高相容的 14.29 後 custom rasterizer 與 `mesh_inpaint_processor.cp310-win_amd64.pyd` 均建置成功。SDK 10.0.26100.0、Python import library 由 `sysconfig` 取得，GPU arch 可參數化。
 
-- [ ] **補齊效能基準與 native parity gate**
+- [x] **補齊效能基準與 native parity gate**
   - 位置：新增 `benchmarks/`、測試 fixture 與文件
   - 改善：量測 GGUF inspect/load、tensor lookup、單 block forward；以 Python/reference fixture 比對 shape、有限值、誤差、checksum。
   - 驗收：優化 PR 附 before/after；native 功能不可只以「程式有跑完」作為完成標準。
-  - 進度：新增 20,000 tensors / 1,000,000 lookups deterministic benchmark（Release 0.15 秒）及 NumPy attention reference fixture（finite + `1e-5` 誤差）；真實 GGUF inspect/load、peak RSS、block forward 與官方模型 parity 仍待補。
+  - 進度：20,000 tensors / 1,000,000 lookups Release benchmark 為 0.16 秒；NumPy fixture 覆蓋 attention、conditioned block、timestep、final layer（finite + `1e-5`）。6.10 GB / 752-tensor 真實 GGUF inspect 0.090 秒、block-0 28-tensor load 2.532 秒、peak RSS 197,054,464 bytes；真實 block forward 3.385 秒、4096 finite outputs、L1 17409.8。
 
 - [x] **將警告／靜態分析套用到所有 first-party targets**
   - 位置：`CMakeLists.txt`

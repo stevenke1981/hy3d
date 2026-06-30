@@ -53,6 +53,12 @@ struct CliOptions {
 };
 
 Result<CliOptions> parse_args(const std::vector<std::string>& args);
+Result<CliOptions> parse_inspect_args(const std::vector<std::string>& args, std::size_t start);
+Result<CliOptions> parse_tensor_args(const std::vector<std::string>& args, std::size_t start);
+Result<CliOptions> parse_dit_block_args(const std::vector<std::string>& args, std::size_t start);
+Result<CliOptions> parse_dit_forward_args(const std::vector<std::string>& args, std::size_t start);
+Result<CliOptions> parse_generate_args(const std::vector<std::string>& args, std::size_t start);
+Result<CliOptions> parse_texture_args(const std::vector<std::string>& args, std::size_t start);
 std::string help_text();
 
 } // namespace hy3d

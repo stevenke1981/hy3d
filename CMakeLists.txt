@@ -108,6 +108,19 @@ if (HY3D_BUILD_BENCHMARKS)
     target_link_libraries(benchmark_tensor_lookup PRIVATE hy3d_core)
     add_test(NAME benchmark_tensor_lookup COMMAND benchmark_tensor_lookup)
     set_tests_properties(benchmark_tensor_lookup PROPERTIES LABELS "benchmark" TIMEOUT 20)
+    add_executable(benchmark_gguf_loader benchmarks/benchmark_gguf_loader.cpp)
+    target_link_libraries(benchmark_gguf_loader PRIVATE hy3d_core)
+    if (WIN32)
+        target_link_libraries(benchmark_gguf_loader PRIVATE Psapi)
+    endif()
+    add_test(
+        NAME benchmark_gguf_loader_usage
+        COMMAND ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>/benchmark_gguf_loader${CMAKE_EXECUTABLE_SUFFIX} --help
+    )
+    set_tests_properties(
+        benchmark_gguf_loader_usage
+        PROPERTIES PASS_REGULAR_EXPRESSION "usage: benchmark_gguf_loader"
+    )
 endif()
 
 if (WIN32)
@@ -160,5 +173,16 @@ if (Python3_Interpreter_FOUND)
     add_test(
         NAME python_run_context
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_hy3d_run_context.py
+    )
+    add_test(
+        NAME python_dependency_manifest
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_dependency_manifest.py
+    )
+    add_test(
+        NAME python_native_reference
+        COMMAND ${Python3_EXECUTABLE}
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/generate_native_reference.py
+            --check
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/attention_numpy_reference.csv
     )
 endif()

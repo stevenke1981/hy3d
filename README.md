@@ -291,8 +291,10 @@ First-time setup:
 .\scripts\setup_hy3d_python.ps1
 ```
 
-The setup script installs the exact direct versions reviewed in
-`requirements-torch-cu124.lock.txt` and `requirements-hy3d.lock.txt`.
+The direct requirement files are compile inputs. Setup installs the complete
+136-package Windows/Python 3.10/CUDA 12.4 resolution from
+`requirements-win-cu124.lock.txt`, then writes `hy3d-dependencies.json` with
+the actual Python/package/torch/CUDA and pinned source/model revision details.
 
 If the Hunyuan3D-Paint native extensions need to be rebuilt:
 
@@ -301,15 +303,34 @@ If the Hunyuan3D-Paint native extensions need to be rebuilt:
 ```
 
 The build script detects CUDA, Visual Studio C++ tools, the Windows SDK, and
-the Python import library. Override a detected value when needed, for example:
+the Python import library. It also applies a compatibility ceiling: CUDA 12.1
+selects MSVC 14.29 on the verified machine because MSVC 14.51 crashes
+`cudafe++` with status `0xC0000409`. Override a detected value when needed:
 
 ```powershell
 .\scripts\build_hy3dpaint_windows.ps1 -CudaRoot "C:\CUDA\v12.4" -CudaArchitecture "8.6"
 ```
 
-The verified smoke output is `outputs\hy3d-cli-smoke-5.glb`, about 11 MB, and loads as a GLB scene with one geometry. A 5-step run took about 210 seconds on the RTX 3070 Ti.
+The latest verified shape output is `outputs\acceptance-next-shape.glb`
+(11,250,604 bytes). A fresh 5-step/seed-42 run took 249.656 seconds on the RTX
+3070 Ti and independently reopened as one geometry with 312,722 vertices and
+624,760 faces.
 
-The verified texture smoke output is `outputs\hy3d-texture-smoke.glb`, about 17.7 MB. It completed on the RTX 3070 Ti in about 1083 seconds with `--resolution 512 --max-views 6 --no-remesh`. Hunyuan3D-Paint officially recommends much more VRAM for this setting, so expect long runtimes on 8 GB cards.
+The latest verified texture output is `outputs\acceptance-next-textured.glb`
+(17,695,540 bytes). It completed in 1284.569 seconds with resolution 512,
+6 views and remeshing disabled, and independently reopened with PBR material,
+texture visuals and UVs. Hunyuan3D-Paint officially recommends much more VRAM
+for this setting, so expect long runtimes on 8 GB cards.
+
+Real-model loader benchmark:
+
+```powershell
+.\build\Release\benchmark_gguf_loader.exe .\models\hy3d-shape-f16.gguf 0 1
+```
+
+On the 6,101,566,528-byte local GGUF this measured 0.090 seconds to inspect 752
+tensors and 2.532 seconds to load 28 block-0 tensors, with peak RSS of
+197,054,464 bytes.
 
 Do not use `--low-vram` yet for the official Python backend on this checkout. The upstream CPU offload path currently mixes CPU and CUDA scheduler tensors. The non-offload CUDA path works for the downloaded shape model on this machine.
 

@@ -3,15 +3,26 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from hy3d_run_context import RunContext, sidecar_path  # noqa: E402
+from hy3d_run_context import RunContext, partial_output_path, sidecar_path  # noqa: E402
 
 
 class RunContextTests(unittest.TestCase):
+    def test_partial_output_preserves_export_format_suffix(self):
+        self.assertEqual(
+            partial_output_path(pathlib.Path("mesh.glb")),
+            pathlib.Path("mesh.partial.glb"),
+        )
+        self.assertEqual(
+            partial_output_path(pathlib.Path("mesh.obj")),
+            pathlib.Path("mesh.partial.obj"),
+        )
+
     def test_error_metadata_is_written_and_streams_are_restored(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = pathlib.Path(tmp)
@@ -49,6 +60,24 @@ class RunContextTests(unittest.TestCase):
             ) as run:
                 self.assertEqual(run.finish("ok", 0), 0)
             self.assertEqual(metadata["output_size"], 4)
+
+    def test_metadata_write_failure_returns_stable_nonzero_code(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            output = root / "result.glb"
+            log = root / "result.log"
+            metadata_path = root / "result.json"
+            metadata = {"status": "started"}
+
+            with RunContext(output, log, metadata_path, metadata) as run:
+                with mock.patch("hy3d_run_context.write_metadata", side_effect=OSError("disk full")):
+                    code = run.finish("ok", 0)
+
+            self.assertEqual(code, 98)
+            self.assertEqual(metadata["status"], "error")
+            self.assertEqual(metadata["exit_code"], 98)
+            self.assertIn("metadata write failed", metadata["error"])
+            self.assertIn("metadata write failed", log.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

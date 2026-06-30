@@ -179,5 +179,56 @@ int main() {
         require(parsed.error().find("--model") != std::string::npos, "incomplete inspect error");
     }
 
+    {
+        const std::vector<std::string> args = {
+            "hy3d", "generate", "--image", "input.png", "--out", "out.glb", "--steps", "5junk"};
+        const auto parsed = hy3d::parse_args(args);
+        require(!parsed.ok(), "numeric options must reject trailing characters");
+    }
+
+    {
+        const std::vector<std::string> args = {
+            "hy3d", "generate", "--image", "input.png", "--out", "out.glb", "--steps", "2147483648"};
+        const auto parsed = hy3d::parse_args(args);
+        require(!parsed.ok(), "numeric options must reject overflow");
+    }
+
+    {
+        const std::vector<std::string> args = {
+            "hy3d", "generate", "--image", "input.png", "--out", "out.glb", "--steps", "10001"};
+        const auto parsed = hy3d::parse_args(args);
+        require(!parsed.ok(), "steps must enforce a practical upper bound");
+    }
+
+    {
+        const std::vector<std::string> args = {
+            "hy3d", "dit-forward", "--model", "model.gguf", "--latent-dim", "1048577"};
+        const auto parsed = hy3d::parse_args(args);
+        require(!parsed.ok(), "runtime dimensions must enforce allocation bounds");
+    }
+
+    {
+        const std::vector<std::string> args = {
+            "hy3d", "dit-block", "--model", "model.gguf", "--tokens", "1048576",
+            "--heads", "1024", "--head-dim", "65536"};
+        const auto parsed = hy3d::parse_args(args);
+        require(!parsed.ok(), "combined tensor dimensions must enforce an allocation bound");
+    }
+
+    {
+        const std::vector<std::string> args = {
+            "hy3d", "tensor", "--model", "model.gguf", "--name", "tensor", "--bytes", "-1"};
+        const auto parsed = hy3d::parse_args(args);
+        require(!parsed.ok(), "unsigned options must reject negative values");
+    }
+
+    {
+        const std::vector<std::string> args = {
+            "hy3d", "generate", "--image", "input.png", "--out", "out.glb", "--steps", "8"};
+        const auto parsed = hy3d::parse_generate_args(args, 2);
+        require(parsed.ok(), "generate parser should be independently callable");
+        require(parsed.value().steps == 8, "independent generate parser value");
+    }
+
     return 0;
 }

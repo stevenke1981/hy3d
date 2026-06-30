@@ -4,7 +4,8 @@ param(
     [string] $CudaRoot,
     [string] $MsvcRoot,
     [string] $WindowsSdkVersion,
-    [string] $CudaArchitecture = "8.6"
+    [string] $CudaArchitecture = "8.6",
+    [string] $UvPath
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,11 +13,28 @@ $ErrorActionPreference = "Stop"
 
 $PythonPath = (Resolve-Path -LiteralPath $PythonPath).Path
 $SourceRoot = (Resolve-Path -LiteralPath $SourceRoot).Path
+if (-not $UvPath) {
+    $uvCommand = Get-Command uv -ErrorAction SilentlyContinue
+    $UvPath = if ($uvCommand) { $uvCommand.Source } else { Join-Path $env:USERPROFILE ".local\bin\uv.exe" }
+}
+if (-not (Test-Path -LiteralPath $UvPath)) {
+    throw "uv executable not found: $UvPath"
+}
 $cudaBase = "${env:ProgramFiles}\NVIDIA GPU Computing Toolkit\CUDA"
 $cudaExplicit = if ($CudaRoot) { $CudaRoot } elseif ($env:CUDA_PATH) { $env:CUDA_PATH } else { $null }
 $CudaRoot = Resolve-Hy3dCudaRoot -ExplicitPath $cudaExplicit -BasePath $cudaBase
+$cudaVersion = Get-Hy3dVersion (Split-Path -Leaf $CudaRoot)
+$maximumMsvcVersion = $null
+if ($cudaVersion.Major -eq 12 -and $cudaVersion.Minor -le 1) {
+    $maximumMsvcVersion = [version]"14.39.99999"
+}
 $msvcBase = if ($MsvcRoot) { $null } else { Find-Hy3dMsvcBase }
-$MsvcRoot = Resolve-Hy3dVersionedRoot -ExplicitPath $MsvcRoot -BasePath $msvcBase -RequiredRelativePath "bin\HostX64\x64\cl.exe" -Kind "MSVC"
+$MsvcRoot = Resolve-Hy3dVersionedRoot `
+    -ExplicitPath $MsvcRoot `
+    -BasePath $msvcBase `
+    -RequiredRelativePath "bin\HostX64\x64\cl.exe" `
+    -Kind "MSVC" `
+    -MaximumVersion $maximumMsvcVersion
 $sdk = Resolve-Hy3dWindowsSdk -ExplicitVersion $WindowsSdkVersion
 $sdkRoot = $sdk.Root
 $WindowsSdkVersion = $sdk.Version
@@ -31,7 +49,10 @@ $env:INCLUDE = "$MsvcRoot\include;$sdkRoot\Include\$WindowsSdkVersion\ucrt;$sdkR
 $env:LIB = "$MsvcRoot\lib\x64;$sdkRoot\Lib\$WindowsSdkVersion\ucrt\x64;$sdkRoot\Lib\$WindowsSdkVersion\um\x64"
 
 $customRasterizer = Join-Path $SourceRoot "hy3dpaint\custom_rasterizer"
-uv pip install --python $PythonPath --no-build-isolation -e $customRasterizer
+& $UvPath pip install --python $PythonPath --no-build-isolation -e $customRasterizer
+if ($LASTEXITCODE -ne 0) {
+    throw "failed to build custom_rasterizer"
+}
 
 $renderer = Join-Path $SourceRoot "hy3dpaint\DifferentiableRenderer"
 $configJson = & $PythonPath -c "import json, pathlib, pybind11, sys, sysconfig; print(json.dumps({'ext': sysconfig.get_config_var('EXT_SUFFIX'), 'py_include': sysconfig.get_paths()['include'], 'py_lib': str(pathlib.Path(sys.base_prefix) / 'libs'), 'pybind11_include': pybind11.get_include()}))"

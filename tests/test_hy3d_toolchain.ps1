@@ -3,6 +3,12 @@ param([Parameter(Mandatory = $true)][string] $RepoRoot)
 $ErrorActionPreference = "Stop"
 . (Join-Path $RepoRoot "scripts\hy3d_toolchain.ps1")
 
+$buildScript = Get-Content -Raw -LiteralPath (Join-Path $RepoRoot "scripts\build_hy3dpaint_windows.ps1")
+if ($buildScript -notmatch '\[string\]\s*\$UvPath' -or
+    $buildScript -notmatch '&\s+\$UvPath\s+pip') {
+    throw "extension build does not accept the resolved uv executable"
+}
+
 $root = Join-Path ([System.IO.Path]::GetTempPath()) ("hy3d-toolchain-" + [guid]::NewGuid())
 try {
     $cudaBase = Join-Path $root "CUDA"
@@ -26,10 +32,18 @@ try {
 
     $cuda = Resolve-Hy3dVersionedRoot -BasePath $cudaBase -RequiredRelativePath "bin\nvcc.exe" -Kind "CUDA"
     $msvc = Resolve-Hy3dVersionedRoot -BasePath $msvcBase -RequiredRelativePath "bin\HostX64\x64\cl.exe" -Kind "MSVC"
+    $compatibleMsvc = Resolve-Hy3dVersionedRoot `
+        -BasePath $msvcBase `
+        -RequiredRelativePath "bin\HostX64\x64\cl.exe" `
+        -Kind "MSVC" `
+        -MaximumVersion ([version]"14.39.99999")
     $sdk = Resolve-Hy3dWindowsSdk -SdkRoot $sdkBase
 
     if ((Split-Path -Leaf $cuda) -ne "v13.2") { throw "did not choose latest CUDA: $cuda" }
     if ((Split-Path -Leaf $msvc) -ne "14.44.35207") { throw "did not choose latest MSVC: $msvc" }
+    if ((Split-Path -Leaf $compatibleMsvc) -ne "14.29.30133") {
+        throw "did not choose CUDA-compatible MSVC: $compatibleMsvc"
+    }
     if ($sdk.Version -ne "10.0.26100.0") { throw "did not choose latest SDK: $($sdk.Version)" }
 
     $explicit = Resolve-Hy3dVersionedRoot -ExplicitPath (Join-Path $cudaBase "v12.1") -RequiredRelativePath "bin\nvcc.exe" -Kind "CUDA"

@@ -31,7 +31,12 @@ try {
     foreach ($relative in @(
         "bin\hy3d.exe",
         "scripts\hy3d_generate.py",
+        "scripts\hy3d_texture.py",
+        "scripts\hy3d_run_context.py",
+        "scripts\hy3d_toolchain.ps1",
+        "scripts\write_dependency_manifest.py",
         "scripts\run_python_backend.ps1",
+        "requirements-win-cu124.lock.txt",
         "README_RELEASE.md",
         "SHA256SUMS.txt"
     )) {

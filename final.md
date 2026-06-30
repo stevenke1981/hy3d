@@ -4,7 +4,7 @@
 >
 > CBM project：`cbm+hunyuan`
 >
-> 索引規模：51 files、263 symbols、592 edges（245 call edges）
+> 索引規模：61 files、349 symbols、839 edges（387 call edges）
 
 ## 結論
 
@@ -20,7 +20,7 @@ hy3d.exe
 
 同時存在一套逐步成形的 native GGUF/CPU runtime（GGUF inspect/load、tensor mapping、attention/DiT primitives、scheduler、mesh fixture），但 end-to-end native inference 仍明確未完成。現階段適合定位為「Python backend 的 Windows orchestration CLI + native runtime 原型」，不宜把 native 路徑描述成完整推論引擎。
 
-兩輪改善已把非 slow 測試由 8 個擴充到 21 個，並完成原 P0、GGUF 邊界、backend 成功語意、原子輸出、單次開檔/hash index、toolchain 探測、品質分析 gates 與 clean release build。主要剩餘風險是線上 clean-machine/CUDA 驗收、transitive Python lock、每個 CLI handler 的細拆，以及真實模型 native parity/peak RSS。
+三輪改善已把非 slow 測試由 8 個擴充到 24 個，15 項 TODO 完成 14 項。P0、GGUF 邊界與 loader、backend 語意、原子輸出、CLI/Python 拆分、toolchain、完整 dependency lock、品質分析、真實 benchmark/parity 及 CUDA shape/texture 均有本輪證據。唯一未閉環的是「全新 release zip 線上下載並重建所有依賴」。
 
 ## 高優先級問題處理狀態
 
@@ -29,21 +29,21 @@ hy3d.exe
 | P0 | shell 字串式程序啟動 | 已修復 | Windows 使用 `CreateProcessW`，POSIX 使用 `fork/execvp`；真實 child argv round-trip 與 launch failure 測試通過 |
 | P0 | checkpoint 不安全反序列化 | 已修復 | 預設 `weights_only=True`；只有 `--allow-unsafe-pickle` 可明確 opt-in |
 | P1 | GGUF 資源與邊界驗證不足 | 已修復 | version/count/string/array/rank/offset/file-range/duplicate 檢查及小型惡意 fixture |
-| P1 | tensor 載入與查找不適合大型模型 | 核心實作完成 | loader 單次開檔、metadata/runtime hash index、移除 byte copy；真實模型 benchmark 待補 |
+| P1 | tensor 載入與查找不適合大型模型 | 已驗收 | loader 單次開檔、hash index、move；6.1 GB GGUF inspect/load/RSS 與 block forward 已量測 |
 | P1 | backend script 綁定 cwd | 已修復 | executable-relative ancestor search、cwd fallback、`HY3D_SCRIPT_ROOT` override |
 | P1 | backend 缺失時假成功 | 已修復 | wrapper 固定非零退出並有 PowerShell regression test |
-| P1 | Python 例外 sidecar/輸出不完整 | 已修復 | generate/texture error sidecar 對齊，final output 使用 `.partial` + atomic replace，失敗保留舊輸出 |
-| P1 | release/setup 非 clean-machine 閉環 | 部分完成 | release 自行 configure/build/package，pinned source checkout 與 setup 順序已測；線上 CUDA smoke 待執行 |
-| P1 | 供應鏈未完全鎖定 | 部分完成 | source/model/uvx revision 與資產 hash 已固定；新增兩份精確直接依賴 lock，transitive lock/installed manifest 待補 |
+| P1 | Python 例外 sidecar/輸出不完整 | 已修復 | format-preserving `.partial.glb` + atomic replace、統一 failure codes；真實 shape/texture 成功 |
+| P1 | release/setup 非 clean-machine 閉環 | 部分完成 | clean configure/package/runtime closure 與 repo 內真實 CUDA smoke 通過；全新 zip 線上重建待執行 |
+| P1 | 供應鏈未完全鎖定 | 已修復 | 136-package Windows cu124 transitive lock、空 venv dry-run、installed manifest、revision/hash pin |
 
 ## 主要可維護性與工程缺口
 
-- `src/hy3d_cli.cpp::parse_args()` 仍約 555 行且重複 numeric parse；`main()` 已縮為 parse + `run_command()`，下一步是每個 subcommand parser/handler。
-- generate/texture 已共用 `RunContext` 的 tee、metadata、timing 與 cleanup；重型 pipeline 建立／推論仍在各自 `main()`。
-- toolchain 已由 `vswhere`/versioned dirs、CUDA env、Windows SDK 與 Python `sysconfig` 探測，仍需在第二組實體工具鏈執行 extension build。
+- CLI 已拆成每個 command parser/handler 與 switch dispatch；後續可再做 property-based argv fuzzing，但不再有重複 `stoi` 或 prefix-accept bug。
+- generate/texture 已拆成 preflight、dependency、pipeline、inference/output commit，並共用 `RunContext`。
+- toolchain 由 `vswhere`/versioned dirs、CUDA env、Windows SDK 與 Python `sysconfig` 探測；CUDA 12.1 會排除造成 `cudafe++` crash 的 MSVC 14.51，實機改選 14.29 後兩個 paint extensions 建置成功。
 - CI 已有 Windows Debug/Release、Linux ASan/UBSan 與 clang-tidy；仍缺 fuzzer 與真實 CUDA nightly job。
-- native runtime 新增 NumPy attention fixture與 tensor lookup benchmark，仍缺官方模型 fixture、load/peak RSS 與 block-forward benchmark。
-- CMake warning flags 已套用所有 first-party targets；clang-tidy/sanitizer 尚未加入。
+- native runtime 有 NumPy 四類 primitive parity、lookup benchmark、真實 GGUF load/RSS/block forward；完整 native end-to-end graph 仍不是已完成 backend。
+- CMake warning flags、clang-tidy、ASan/UBSan jobs 均已加入。
 
 ## 正向觀察
 
@@ -98,17 +98,19 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 結果：
 
 - Debug build：通過。
-- Debug 非 slow CTest：21/21 通過（5.28 秒）。
+- Debug 非 slow CTest：24/24 通過（6.74 秒）。
 - Release build：通過。
-- Release 非 slow CTest：21/21 通過（3.27 秒）。
-- Clean release configure/build/package：1/1 通過（18.10 秒）。
-- Release tensor lookup benchmark：1,000,000 次查找 0.15 秒。
+- Release 非 slow CTest：24/24 通過（5.02 秒）。
+- Clean release configure/build/package/runtime-helper closure：1/1 通過（18.06 秒）。
+- Release tensor lookup benchmark：1,000,000 次查找 0.16 秒。
+- 真實 shape：249.656 秒，11,250,604 bytes，獨立解析 312,722 vertices / 624,760 faces。
+- 真實 texture：1284.569 秒，17,695,540 bytes，獨立解析 PBRMaterial、UV、texture visual。
+- 6.1 GB GGUF：inspect 0.090 秒、block load 2.532 秒、peak RSS 197,054,464 bytes；block forward 3.385 秒。
+- Paint extensions：CUDA 12.1 + MSVC 14.29 + SDK 10.0.26100.0 + Python 3.10 實際重建成功。
 - Python `py_compile`、toolchain 實機探測與 `git diff --check` 通過。
 
 未執行：
 
-- 真實 CUDA shape/texture 生成。
-- 真實模型 native parity。
 - release zip 的線上 source/model 下載後 CUDA smoke。
 - 惡意 pickle payload 的實際執行（預設安全模式與明確 opt-in 已由參數測試驗證）。
 

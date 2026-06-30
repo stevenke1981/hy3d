@@ -87,6 +87,9 @@ if (-not $executable) {
 Copy-Item -LiteralPath $executable -Destination (Join-Path $release "bin\hy3d.exe")
 Copy-Item -LiteralPath (Join-Path $root "scripts\hy3d_generate.py") -Destination (Join-Path $release "scripts\hy3d_generate.py")
 Copy-Item -LiteralPath (Join-Path $root "scripts\hy3d_texture.py") -Destination (Join-Path $release "scripts\hy3d_texture.py")
+Copy-Item -LiteralPath (Join-Path $root "scripts\hy3d_run_context.py") -Destination (Join-Path $release "scripts\hy3d_run_context.py")
+Copy-Item -LiteralPath (Join-Path $root "scripts\hy3d_toolchain.ps1") -Destination (Join-Path $release "scripts\hy3d_toolchain.ps1")
+Copy-Item -LiteralPath (Join-Path $root "scripts\write_dependency_manifest.py") -Destination (Join-Path $release "scripts\write_dependency_manifest.py")
 Copy-Item -LiteralPath (Join-Path $root "scripts\run_python_backend.ps1") -Destination (Join-Path $release "scripts\run_python_backend.ps1")
 Copy-Item -LiteralPath (Join-Path $root "scripts\run_texture_backend.ps1") -Destination (Join-Path $release "scripts\run_texture_backend.ps1")
 Copy-Item -LiteralPath (Join-Path $root "scripts\setup_hy3d_python.ps1") -Destination (Join-Path $release "scripts\setup_hy3d_python.ps1")
@@ -98,6 +101,9 @@ Copy-Item -LiteralPath (Join-Path $root "examples\texture.ps1") -Destination (Jo
 Copy-Item -LiteralPath (Join-Path $root "README.md") -Destination (Join-Path $release "README.md")
 Copy-Item -LiteralPath (Join-Path $root "spec.md") -Destination (Join-Path $release "spec.md")
 Copy-Item -LiteralPath (Join-Path $root "plan.md") -Destination (Join-Path $release "plan.md")
+Copy-Item -LiteralPath (Join-Path $root "requirements-hy3d.lock.txt") -Destination (Join-Path $release "requirements-hy3d.lock.txt")
+Copy-Item -LiteralPath (Join-Path $root "requirements-torch-cu124.lock.txt") -Destination (Join-Path $release "requirements-torch-cu124.lock.txt")
+Copy-Item -LiteralPath (Join-Path $root "requirements-win-cu124.lock.txt") -Destination (Join-Path $release "requirements-win-cu124.lock.txt")
 
 $sourceRoot = Join-Path $root "third_party\Hunyuan3D-2.1"
 if ($IncludeSource) {

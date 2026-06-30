@@ -16,7 +16,7 @@ SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from hy3d_run_context import RunContext, sidecar_path
+from hy3d_run_context import RunContext, partial_output_path, sidecar_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -62,6 +62,78 @@ def add_source_paths(source_root: pathlib.Path) -> None:
         sys.path.insert(0, str(hy3dpaint_root))
 
 
+def validate_preflight(
+    args: argparse.Namespace,
+    image_path: pathlib.Path,
+    source_root: pathlib.Path,
+    model_path: pathlib.Path,
+) -> tuple[int, str] | None:
+    if not image_path.exists():
+        return 2, f"image not found: {image_path}"
+    if not source_root.exists():
+        return 3, f"Hunyuan3D source checkout not found: {source_root}"
+    checkpoint_root = model_path / args.subfolder
+    if not (checkpoint_root / "model.fp16.ckpt").exists():
+        return 4, f"shape checkpoint not found under: {checkpoint_root}"
+    return None
+
+
+def load_dependencies():
+    import torch
+    from PIL import Image
+    from hy3dshape.pipelines import Hunyuan3DDiTFlowMatchingPipeline
+
+    return torch, Image, Hunyuan3DDiTFlowMatchingPipeline
+
+
+def create_pipeline(args: argparse.Namespace, model_path: pathlib.Path, torch, pipeline_class):
+    dtype = torch.float16 if args.device == "cuda" else torch.float32
+    pipeline = pipeline_class.from_pretrained(
+        str(model_path),
+        subfolder=args.subfolder,
+        device=args.device,
+        dtype=dtype,
+        use_safetensors=False,
+        variant="fp16",
+    )
+    if args.low_vram:
+        if not hasattr(pipeline, "components"):
+            pipeline.components = {
+                "conditioner": pipeline.conditioner,
+                "model": pipeline.model,
+                "vae": pipeline.vae,
+            }
+        pipeline.enable_model_cpu_offload(device=args.device)
+    return pipeline
+
+
+def run_inference(
+    args: argparse.Namespace,
+    steps: int,
+    image_path: pathlib.Path,
+    output_path: pathlib.Path,
+    partial_output_path: pathlib.Path,
+    torch,
+    image_module,
+    pipeline,
+) -> None:
+    torch.manual_seed(args.seed)
+    if args.device == "cuda":
+        torch.cuda.manual_seed_all(args.seed)
+
+    image_arg = str(image_path)
+    if not args.no_rembg:
+        image_arg = image_module.open(image_path).convert("RGBA")
+
+    with torch.inference_mode():
+        mesh = pipeline(image=image_arg, num_inference_steps=steps)[0]
+    partial_output_path.unlink(missing_ok=True)
+    mesh.export(str(partial_output_path))
+    if not partial_output_path.exists() or partial_output_path.stat().st_size == 0:
+        raise RuntimeError(f"mesh exporter did not produce a valid file: {partial_output_path}")
+    partial_output_path.replace(output_path)
+
+
 def main() -> int:
     args = parse_args()
 
@@ -71,7 +143,7 @@ def main() -> int:
     steps = args.steps if args.steps is not None else steps_for_quality(args.quality)
     log_path = pathlib.Path(args.log).resolve() if args.log else sidecar_path(output_path, ".log.txt")
     metadata_path = pathlib.Path(args.metadata).resolve() if args.metadata else sidecar_path(output_path, ".json")
-    partial_output_path = pathlib.Path(str(output_path) + ".partial")
+    partial_path = partial_output_path(output_path)
 
     metadata = {
         "command": "generate",
@@ -97,26 +169,17 @@ def main() -> int:
     finish = run.finish
 
     try:
-        if not image_path.exists():
-            message = f"image not found: {image_path}"
+        preflight = validate_preflight(args, image_path, source_root, model_path)
+        if preflight is not None:
+            code, message = preflight
             print(f"error: {message}", file=sys.stderr)
-            return finish("error", 2, message)
-        if not source_root.exists():
-            message = f"Hunyuan3D source checkout not found: {source_root}"
-            print(f"error: {message}", file=sys.stderr)
-            return finish("error", 3, message)
-        if not (model_path / args.subfolder / "model.fp16.ckpt").exists():
-            message = f"shape checkpoint not found under: {model_path / args.subfolder}"
-            print(f"error: {message}", file=sys.stderr)
-            return finish("error", 4, message)
+            return finish("error", code, message)
 
         add_source_paths(source_root)
         os.environ.setdefault("HY3DGEN_MODELS", str(model_path.parent))
 
         try:
-            import torch
-            from PIL import Image
-            from hy3dshape.pipelines import Hunyuan3DDiTFlowMatchingPipeline
+            torch, image_module, pipeline_class = load_dependencies()
         except Exception as exc:
             message = f"failed to import Hunyuan3D dependencies: {exc}"
             print(f"error: {message}", file=sys.stderr)
@@ -149,49 +212,24 @@ def main() -> int:
             print(f"error: {message}", file=sys.stderr)
             return finish("error", 6, message)
 
-        dtype = torch.float16 if args.device == "cuda" else torch.float32
-        pipeline = Hunyuan3DDiTFlowMatchingPipeline.from_pretrained(
-            str(model_path),
-            subfolder=args.subfolder,
-            device=args.device,
-            dtype=dtype,
-            use_safetensors=False,
-            variant="fp16",
+        pipeline = create_pipeline(args, model_path, torch, pipeline_class)
+        run_inference(
+            args,
+            steps,
+            image_path,
+            output_path,
+            partial_path,
+            torch,
+            image_module,
+            pipeline,
         )
-        if args.low_vram:
-            if not hasattr(pipeline, "components"):
-                pipeline.components = {
-                    "conditioner": pipeline.conditioner,
-                    "model": pipeline.model,
-                    "vae": pipeline.vae,
-                }
-            pipeline.enable_model_cpu_offload(device=args.device)
-
-        torch.manual_seed(args.seed)
-        if args.device == "cuda":
-            torch.cuda.manual_seed_all(args.seed)
-
-        image_arg: str | Image.Image
-        if args.no_rembg:
-            image_arg = str(image_path)
-        else:
-            image = Image.open(image_path).convert("RGBA")
-            image_arg = image
-
-        with torch.inference_mode():
-            mesh = pipeline(image=image_arg, num_inference_steps=steps)[0]
-        partial_output_path.unlink(missing_ok=True)
-        mesh.export(str(partial_output_path))
-        if not partial_output_path.exists() or partial_output_path.stat().st_size == 0:
-            raise RuntimeError(f"mesh exporter did not produce a valid file: {partial_output_path}")
-        partial_output_path.replace(output_path)
 
         elapsed = run.elapsed_seconds()
         print(f"done: {output_path}")
         print(f"elapsed_seconds: {elapsed:.2f}")
         return finish("ok", 0)
     except Exception as exc:
-        partial_output_path.unlink(missing_ok=True)
+        partial_path.unlink(missing_ok=True)
         message = f"unhandled generation error: {exc}"
         print(f"error: {message}", file=sys.stderr)
         return finish("error", 99, message)

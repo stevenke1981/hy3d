@@ -36,13 +36,12 @@ hy3d::Result<std::vector<float>> read_f32_file(const std::string& path, std::siz
 
 } // namespace
 
-int run_command(const CliOptions& options) {
-    if (options.command == CommandKind::Help) {
-        std::cout << help_text();
-        return 0;
-    }
+int run_help_command(const CliOptions&) {
+    std::cout << help_text();
+    return 0;
+}
 
-    if (options.command == hy3d::CommandKind::Inspect) {
+int run_inspect_command(const CliOptions& options) {
         const auto info = hy3d::inspect_gguf(options.model_path);
         if (!info.ok()) {
             std::cerr << "error: " << info.error() << "\n";
@@ -50,9 +49,9 @@ int run_command(const CliOptions& options) {
         }
         std::cout << hy3d::format_gguf_info(info.value());
         return 0;
-    }
+}
 
-    if (options.command == hy3d::CommandKind::Tensor) {
+int run_tensor_command(const CliOptions& options) {
         const auto info = hy3d::inspect_gguf(options.model_path);
         if (!info.ok()) {
             std::cerr << "error: " << info.error() << "\n";
@@ -86,9 +85,9 @@ int run_command(const CliOptions& options) {
         }
         std::cout << std::dec << "\n";
         return 0;
-    }
+}
 
-    if (options.command == hy3d::CommandKind::DitBlock) {
+int run_dit_block_command(const CliOptions& options) {
         const auto model = hy3d::load_hunyuan_dit_blocks_from_gguf(
             options.model_path,
             static_cast<std::uint32_t>(options.block_index),
@@ -179,9 +178,9 @@ int run_command(const CliOptions& options) {
         std::cout << "output_values: " << output.value().size() << "\n";
         std::cout << "l1_checksum: " << checksum << "\n";
         return 0;
-    }
+}
 
-    if (options.command == hy3d::CommandKind::DitForward) {
+int run_dit_forward_command(const CliOptions& options) {
         const auto model = hy3d::load_hunyuan_dit_forward_from_gguf(
             options.model_path,
             static_cast<std::uint32_t>(options.block_index),
@@ -248,9 +247,9 @@ int run_command(const CliOptions& options) {
         std::cout << "output_values: " << output.value().size() << "\n";
         std::cout << "l1_checksum: " << checksum << "\n";
         return 0;
-    }
+}
 
-    if (options.command == hy3d::CommandKind::Generate) {
+int run_generate_command(const CliOptions& options) {
         hy3d::GenerateRequest request;
         request.backend = options.backend;
         request.device = options.device;
@@ -270,9 +269,9 @@ int run_command(const CliOptions& options) {
             return 1;
         }
         return result.value();
-    }
+}
 
-    if (options.command == hy3d::CommandKind::Texture) {
+int run_texture_command(const CliOptions& options) {
         hy3d::TextureRequest request;
         request.backend = options.backend;
         request.device = options.device;
@@ -291,6 +290,24 @@ int run_command(const CliOptions& options) {
             return 1;
         }
         return result.value();
+}
+
+int run_command(const CliOptions& options) {
+    switch (options.command) {
+    case CommandKind::Help:
+        return run_help_command(options);
+    case CommandKind::Inspect:
+        return run_inspect_command(options);
+    case CommandKind::Tensor:
+        return run_tensor_command(options);
+    case CommandKind::DitBlock:
+        return run_dit_block_command(options);
+    case CommandKind::DitForward:
+        return run_dit_forward_command(options);
+    case CommandKind::Generate:
+        return run_generate_command(options);
+    case CommandKind::Texture:
+        return run_texture_command(options);
     }
 
     std::cerr << "error: unhandled command\n";
