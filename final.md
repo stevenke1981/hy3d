@@ -4,7 +4,7 @@
 >
 > CBM project：`cbm+hunyuan`
 >
-> 索引規模：63 files、353 symbols、843 edges（387 call edges）
+> 索引規模：65 files、369 symbols、874 edges（391 call edges）
 
 ## 結論
 
@@ -20,7 +20,7 @@ hy3d.exe
 
 同時存在一套逐步成形的 native GGUF/CPU runtime（GGUF inspect/load、tensor mapping、attention/DiT primitives、scheduler、mesh fixture），但 end-to-end native inference 仍明確未完成。現階段適合定位為「Python backend 的 Windows orchestration CLI + native runtime 原型」，不宜把 native 路徑描述成完整推論引擎。
 
-三輪改善已把非 slow 測試由 8 個擴充到 24 個，15 項 TODO 完成 14 項。P0、GGUF 邊界與 loader、backend 語意、原子輸出、CLI/Python 拆分、toolchain、完整 dependency lock、品質分析、真實 benchmark/parity 及 CUDA shape/texture 均有本輪證據。release zip 也已通過 Unicode path 解壓、26-file SHA-256 與 outside-cwd executable smoke；唯一未閉環的是「全新 release zip 線上下載並重建所有依賴後執行 CUDA smoke」。
+非 slow 測試已由 8 個擴充到 25 個，15 項 TODO 完成 14 項。全新 release zip 已通過線上下載、fresh venv、patched Windows extensions、shape/texture CUDA smoke；唯一未閉環的是非 ASCII 路徑的 PyTorch/Ninja native extension build。
 
 ## 高優先級問題處理狀態
 
@@ -33,7 +33,7 @@ hy3d.exe
 | P1 | backend script 綁定 cwd | 已修復 | executable-relative ancestor search、cwd fallback、`HY3D_SCRIPT_ROOT` override |
 | P1 | backend 缺失時假成功 | 已修復 | wrapper 固定非零退出並有 PowerShell regression test |
 | P1 | Python 例外 sidecar/輸出不完整 | 已修復 | format-preserving `.partial.glb` + atomic replace、統一 failure codes；真實 shape/texture 成功 |
-| P1 | release/setup 非 clean-machine 閉環 | 部分完成 | 全新 zip 已完成線上 source/model 與 136-package venv；clean source 尚缺自動套用 Windows rasterizer patch，CUDA smoke 待執行 |
+| P1 | release/setup 非 clean-machine 閉環 | 部分完成 | ASCII 路徑 clean zip 全流程通過；非 ASCII native extension build 仍受上游工具鏈亂碼限制 |
 | P1 | 供應鏈未完全鎖定 | 已修復 | 136-package Windows cu124 transitive lock、空 venv dry-run、installed manifest、revision/hash pin |
 
 ## 主要可維護性與工程缺口
@@ -68,7 +68,7 @@ hy3d.exe
 1. `[完成]` script path 改以 executable/package root 定位。
 2. `[完成]` wrapper 缺失 backend 非零退出。
 3. `[完成]` generate/texture error lifecycle 與 temp + atomic rename。
-4. `[部分]` 乾淨目錄 release configure/build/package、zip/Unicode path、hash 與 outside-cwd executable 已測；線上 setup/download/CUDA smoke 待測。
+4. `[部分]` clean zip 線上 setup/download/extensions/CUDA smoke 已測；非 ASCII native build 待解。
 
 ### 第三階段：大型模型效能
 
@@ -98,10 +98,12 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 結果：
 
 - Debug build：通過。
-- Debug 非 slow CTest：24/24 通過（6.68 秒）。
+- Debug 非 slow CTest：25/25 通過（13.75 秒）。
 - Release build：通過。
-- Release 非 slow CTest：24/24 通過（4.70 秒）。
-- Clean release configure/build/package、zip/Unicode path、26-file SHA-256 與 outside-cwd executable：1/1 通過（20.22 秒），且負向測試拒絕未列與遭修改檔案。
+- Release 非 slow CTest：25/25 通過（6.36 秒）。
+- Clean release configure/build/package、zip/Unicode path、27-file SHA-256 與 outside-cwd executable：1/1 通過（22.08 秒），且負向測試拒絕未列與遭修改檔案。
+- Clean release shape：219.52 秒，11,250,604 bytes，獨立解析 312,722 vertices / 624,760 faces。
+- Clean release texture：1325.40 秒，17,695,556 bytes，獨立解析 PBRMaterial、474,770 vertices / 624,760 faces。
 - Release tensor lookup benchmark：1,000,000 次查找 0.16 秒。
 - 真實 shape：249.656 秒，11,250,604 bytes，獨立解析 312,722 vertices / 624,760 faces。
 - 真實 texture：1284.569 秒，17,695,540 bytes，獨立解析 PBRMaterial、UV、texture visual。
@@ -109,9 +111,7 @@ ctest --test-dir build -C Release -R '^make_release$' --output-on-failure
 - Paint extensions：CUDA 12.1 + MSVC 14.29 + SDK 10.0.26100.0 + Python 3.10 實際重建成功。
 - Python `py_compile`、toolchain 實機探測與 `git diff --check` 通過。
 
-未執行：
-
-- release zip 的 CUDA smoke；線上下載與全新 venv 已完成，但 clean source custom rasterizer 缺少自動 Windows compatibility patch。
+尚未通過：非 ASCII release 路徑的 PyTorch/Ninja native extension build。
 - 惡意 pickle payload 的實際執行（預設安全模式與明確 opt-in 已由參數測試驗證）。
 
 詳細執行清單見 `todos.md`，測試矩陣與驗收 gate 見 `test.md`。

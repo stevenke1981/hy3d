@@ -43,11 +43,10 @@ backend.
 Large models, generated outputs, build trees, and virtual environments are
 local artifacts and must not be committed.
 
-Known clean-setup limitation: source/model download and the fresh 136-package
-environment now complete, including user-local `uvx` discovery. The pinned
-upstream custom rasterizer still needs the repository's Windows `int64_t`/CUDA
-compatibility patch to be applied automatically before extension compilation.
-Until that is wired into setup, use a prepared checkout for texture generation.
+Clean online setup, shape, and texture smoke are verified. Extract to a path
+containing only ASCII characters before running setup: PyTorch/Ninja's Windows
+native-extension toolchain still corrupts non-ASCII source paths. Unicode
+paths remain covered for zip extraction, hash verification, and CLI startup.
 
 ## Quick Start for Humans
 
@@ -111,6 +110,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File `
 or package-escaping manifest paths. It also runs `bin\hy3d.exe --help` from a
 temporary working directory outside the package. This structural check does
 not download models or perform CUDA inference.
+
+For the setup and CUDA commands, move the verified package to an ASCII-only
+path such as `D:\hy3d-release` if the extraction path contains non-ASCII text.
 
 For a mostly offline package from an already prepared checkout:
 

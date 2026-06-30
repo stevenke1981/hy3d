@@ -1,6 +1,7 @@
 param(
     [string] $PythonPath = ".\.venv-hy3d\Scripts\python.exe",
     [string] $SourceRoot = ".\third_party\Hunyuan3D-2.1",
+    [string] $SourceRevision = "82920d643c0dc2f7bfd7255f45f62d386edfe60c",
     [string] $CudaRoot,
     [string] $MsvcRoot,
     [string] $WindowsSdkVersion,
@@ -47,6 +48,13 @@ $env:MAX_JOBS = "1"
 $env:PATH = "$CudaRoot\bin;$MsvcRoot\bin\HostX64\x64;$sdkRoot\bin\$WindowsSdkVersion\x64;$env:PATH"
 $env:INCLUDE = "$MsvcRoot\include;$sdkRoot\Include\$WindowsSdkVersion\ucrt;$sdkRoot\Include\$WindowsSdkVersion\um;$sdkRoot\Include\$WindowsSdkVersion\shared;$sdkRoot\Include\$WindowsSdkVersion\winrt;$sdkRoot\Include\$WindowsSdkVersion\cppwinrt"
 $env:LIB = "$MsvcRoot\lib\x64;$sdkRoot\Lib\$WindowsSdkVersion\ucrt\x64;$sdkRoot\Lib\$WindowsSdkVersion\um\x64"
+
+& $PythonPath (Join-Path $PSScriptRoot "patch_hy3dpaint_windows.py") `
+    --source-root $SourceRoot `
+    --expected-revision $SourceRevision
+if ($LASTEXITCODE -ne 0) {
+    throw "failed to apply the Windows custom-rasterizer source patch"
+}
 
 $customRasterizer = Join-Path $SourceRoot "hy3dpaint\custom_rasterizer"
 & $UvPath pip install --python $PythonPath --no-build-isolation -e $customRasterizer

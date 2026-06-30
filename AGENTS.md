@@ -71,11 +71,11 @@ the changed path can affect generation, texture, dependencies, toolchain, or
 packaging. Validate GLBs with an independent parser and require successful
 JSON sidecars; file existence alone is not acceptance.
 
-Current next blocker: clean online setup reaches custom-rasterizer compilation,
-but the freshly pinned upstream source lacks the Windows compatibility edits
-present in the prepared checkout (`grid_neighbor.cpp`, `rasterizer.cpp`,
-`rasterizer_gpu.cu`, and `setup.py`). Package those edits as an idempotent,
-revision-guarded patch and apply it before `build_hy3dpaint_windows.ps1`.
+The pinned upstream custom-rasterizer patch is applied by
+`patch_hy3dpaint_windows.py`; preserve its revision guard and idempotency.
+Current remaining release limitation: PyTorch/Ninja corrupts non-ASCII paths
+while compiling native extensions. Structural release tests use Unicode, but
+online setup/CUDA acceptance must currently run from an ASCII-only path.
 
 Before completion, parse changed PowerShell/Python files, run
 `git diff --check`, inspect `git status`, and report exact commands and

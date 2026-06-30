@@ -39,6 +39,7 @@ $modelRoot = Join-Path $repoRoot "models\Hunyuan3D-2.1"
 & (Join-Path $PSScriptRoot "build_hy3dpaint_windows.ps1") `
   -PythonPath $python `
   -SourceRoot $sourceRoot `
+  -SourceRevision $SourceRevision `
   -UvPath $uvExecutable
 
 & $python (Join-Path $PSScriptRoot "hy3d_generate.py") `

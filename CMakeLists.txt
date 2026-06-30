@@ -179,6 +179,10 @@ if (Python3_Interpreter_FOUND)
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_dependency_manifest.py
     )
     add_test(
+        NAME python_patch_hy3dpaint_windows
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_patch_hy3dpaint_windows.py
+    )
+    add_test(
         NAME python_native_reference
         COMMAND ${Python3_EXECUTABLE}
             ${CMAKE_CURRENT_SOURCE_DIR}/tests/generate_native_reference.py

@@ -27,6 +27,7 @@ $requiredFiles = @(
     "scripts\hy3d_texture.py",
     "scripts\hy3d_run_context.py",
     "scripts\hy3d_toolchain.ps1",
+    "scripts\patch_hy3dpaint_windows.py",
     "scripts\verify_release.ps1",
     "scripts\write_dependency_manifest.py",
     "scripts\run_python_backend.ps1",

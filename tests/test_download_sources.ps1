@@ -72,6 +72,9 @@ exit /b 0
         $uvxArguments -notmatch [regex]::Escape("0b94677654c57bb9a6b6845cd7b704ccf551d327")) {
         throw "uvx invocation is missing the pinned tool or model revision: $uvxArguments"
     }
+    if ([regex]::Matches($uvxArguments, "(?:^|\s)--include(?:\s|$)").Count -ne 1) {
+        throw "legacy huggingface-cli requires one --include followed by all patterns: $uvxArguments"
+    }
 } finally {
     if (Test-Path -LiteralPath $tempRoot) {
         Remove-Item -LiteralPath $tempRoot -Recurse -Force

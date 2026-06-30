@@ -2,13 +2,13 @@
 
 > 檢視日期：2026-06-30
 >
-> 方法：CBM 專案索引 `cbm+hunyuan`（63 files / 353 symbols / 843 edges）、關鍵符號與呼叫路徑檢視、Debug/Release 實際建置、CTest 與真實 CUDA/model smoke。
+> 方法：CBM 專案索引 `cbm+hunyuan`（65 files / 369 symbols / 874 edges）、關鍵符號與呼叫路徑檢視、Debug/Release 實際建置、CTest 與真實 CUDA/model smoke。
 >
 > 原則：先處理安全與錯誤成功，再做大型模型的 I/O／查找優化，最後拆分結構與補齊工程化。
 
 ## 2026-06-30 實作狀態
 
-已完成 14/15 項。CLI parser/handler、Python pipeline orchestration、136-package transitive lock、真實 GGUF benchmark 與 NumPy parity 均已完成；真實 RTX 3070 Ti shape/texture smoke 也通過。release zip 已能在含空白/中文的路徑解壓、逐檔驗證 SHA-256，並從套件外 cwd 啟動 executable。唯一保留未勾選的是「從全新 release zip 執行線上 setup 與 CUDA smoke」的 clean-machine 閉環。
+已完成 14/15 項。全新 release zip 已完成線上 source/model、136-package venv、Windows extensions、shape 與 texture CUDA smoke；結構驗證亦支援含空白/中文路徑。唯一保留未勾選的是 native extension 在非 ASCII 路徑仍受 PyTorch/Ninja 亂碼限制。
 
 ## P0：安全阻斷
 
@@ -79,9 +79,7 @@
     - 產出的 `README_RELEASE.md` 宣稱 setup 會下載 official source/model files，與腳本行為不一致。
   - 改善：release 腳本先 configure；明確下載／要求 pinned source revision；依序取得 source → 建 venv → 安裝依賴 → build extensions → 下載 models → smoke test。
   - 驗收：在乾淨暫存目錄由 release zip 開始，依 README 的四個命令可完成 package verification、setup、shape smoke、texture smoke。
-  - 進度：獨立空 build 目錄 configure/build/package 已自動驗收；source/model revision、setup 順序已修正。線上下載後的 CUDA shape/texture smoke 尚未執行。
-  - 本輪進度：release 測試新增共用 lifecycle、toolchain、resolved lock、manifest writer 的 package closure gate；另新增 `verify_release.ps1`，自動建立 zip、解壓到含空白/中文的路徑、拒絕不安全 manifest path、驗證 26 個 package files 的 SHA-256，並從套件外 cwd 執行 `hy3d.exe --help`。repo 內 pinned source/model 已完成真實 CUDA shape/texture smoke，custom rasterizer 與 mesh inpaint extension 亦實際重建成功。尚未從全新 release zip 重新下載約數 GB 模型並建立全新 venv，因此維持未勾選。
-  - 最新實跑：修正 `%USERPROFILE%\.local\bin\uvx.exe` 探測與 `huggingface-hub==0.30.2` 必須呼叫 `huggingface-cli` 的相容性後，全新 zip 已完成 pinned source/model 下載與全新 136-package venv。下一個阻斷是 freshly cloned upstream source 未自動套用 prepared checkout 的 Windows `int64_t`/CUDA custom-rasterizer patch；Unicode 路徑另會使 PyTorch/Ninja 路徑亂碼。shape/texture 尚未由該 clean zip 執行，因此維持未勾選。
+  - 最新實跑：下載器支援 user-local `uvx`、舊版 `huggingface-cli` 的單一 `--include` pattern list；revision-guarded/idempotent patcher 自動修正 freshly cloned rasterizer。ASCII 路徑的 clean release 已完成 extension build、shape（219.52 秒）與 texture（1325.40 秒），輸出由獨立 parser 驗證。非 ASCII native build 仍失敗，因此維持未勾選。
 
 - [x] **鎖定依賴與下載來源**
   - 位置：`scripts/setup_hy3d_python.ps1`、`scripts/download_hy3d_models.ps1`

@@ -89,6 +89,7 @@ Copy-Item -LiteralPath (Join-Path $root "scripts\hy3d_generate.py") -Destination
 Copy-Item -LiteralPath (Join-Path $root "scripts\hy3d_texture.py") -Destination (Join-Path $release "scripts\hy3d_texture.py")
 Copy-Item -LiteralPath (Join-Path $root "scripts\hy3d_run_context.py") -Destination (Join-Path $release "scripts\hy3d_run_context.py")
 Copy-Item -LiteralPath (Join-Path $root "scripts\hy3d_toolchain.ps1") -Destination (Join-Path $release "scripts\hy3d_toolchain.ps1")
+Copy-Item -LiteralPath (Join-Path $root "scripts\patch_hy3dpaint_windows.py") -Destination (Join-Path $release "scripts\patch_hy3dpaint_windows.py")
 Copy-Item -LiteralPath (Join-Path $root "scripts\verify_release.ps1") -Destination (Join-Path $release "scripts\verify_release.ps1")
 Copy-Item -LiteralPath (Join-Path $root "scripts\write_dependency_manifest.py") -Destination (Join-Path $release "scripts\write_dependency_manifest.py")
 Copy-Item -LiteralPath (Join-Path $root "scripts\run_python_backend.ps1") -Destination (Join-Path $release "scripts\run_python_backend.ps1")

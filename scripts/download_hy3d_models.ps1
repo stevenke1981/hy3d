@@ -113,15 +113,10 @@ Invoke-HfDownload @(
     $ModelDir,
     "--include",
     "README.md",
-    "--include",
     "LICENSE",
-    "--include",
     "Notice.txt",
-    "--include",
     "demo.py",
-    "--include",
     "hunyuan3d-dit-v2-1/*",
-    "--include",
     "hunyuan3d-vae-v2-1/*"
 )
 

@@ -8,6 +8,10 @@ if ($buildScript -notmatch '\[string\]\s*\$UvPath' -or
     $buildScript -notmatch '&\s+\$UvPath\s+pip') {
     throw "extension build does not accept the resolved uv executable"
 }
+if ($buildScript -notmatch [regex]::Escape("patch_hy3dpaint_windows.py") -or
+    $buildScript -notmatch '\[string\]\s*\$SourceRevision') {
+    throw "extension build does not apply the revision-guarded Windows source patch"
+}
 
 $root = Join-Path ([System.IO.Path]::GetTempPath()) ("hy3d-toolchain-" + [guid]::NewGuid())
 try {
