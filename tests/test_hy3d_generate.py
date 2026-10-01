@@ -171,6 +171,31 @@ class GenerateScriptTests(unittest.TestCase):
             self.assertEqual(output_path.read_bytes(), b"existing output")
             self.assertFalse(pathlib.Path(str(output_path) + ".partial").exists())
 
+    def test_background_removal_decision(self):
+        module = load_generate_module()
+
+        class Img:
+            def __init__(self, mode, alpha_min=255):
+                self.mode = mode
+                self._min = alpha_min
+
+            def getchannel(self, _):
+                return types.SimpleNamespace(getextrema=lambda: (self._min, 255))
+
+        self.assertTrue(module.needs_background_removal(Img("RGB")))
+        self.assertTrue(module.needs_background_removal(Img("RGBA", 255)))
+        self.assertFalse(module.needs_background_removal(Img("RGBA", 0)))
+
+    def test_quality_presets_raise_octree_resolution(self):
+        module = load_generate_module()
+        octrees = [module.sampling_for_quality(q)[1] for q in ("smoke", "draft", "normal", "final")]
+        self.assertEqual(octrees, sorted(octrees))
+
+    def test_no_rembg_passes_path_through(self):
+        module = load_generate_module()
+        args = argparse.Namespace(no_rembg=True)
+        self.assertEqual(module.prepare_image(args, pathlib.Path("a.png"), None), str(pathlib.Path("a.png")))
+
 
 if __name__ == "__main__":
     unittest.main()

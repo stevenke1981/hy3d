@@ -34,6 +34,10 @@ def parse_args() -> argparse.Namespace:
         help="Step preset.",
     )
     parser.add_argument("--steps", type=int, default=None, help="Diffusion inference steps. Overrides --quality.")
+    parser.add_argument("--guidance-scale", type=float, default=None, help="Classifier-free guidance. Overrides --quality.")
+    parser.add_argument("--octree-resolution", type=int, default=None, help="Marching-cubes grid resolution. Overrides --quality.")
+    parser.add_argument("--num-chunks", type=int, default=None, help="Decoder chunk size; lower it to save VRAM.")
+    parser.add_argument("--no-postprocess", action="store_true", help="Skip floater and degenerate-face cleanup.")
     parser.add_argument("--seed", type=int, default=42, help="Random seed.")
     parser.add_argument("--low-vram", action="store_true", help="Enable model CPU offload when available.")
     parser.add_argument("--no-rembg", action="store_true", help="Do not run background removal for RGB images.")
@@ -45,6 +49,53 @@ def parse_args() -> argparse.Namespace:
 
 def steps_for_quality(quality: str) -> int:
     return {"smoke": 5, "draft": 10, "normal": 30, "character-normal": 40, "final": 50}[quality]
+
+
+def sampling_for_quality(quality: str) -> tuple[float, int]:
+    """Return (guidance_scale, octree_resolution) for a quality preset."""
+    return {
+        "smoke": (5.0, 128),
+        "draft": (5.0, 256),
+        "normal": (5.0, 320),
+        "character-normal": (5.0, 384),
+        "final": (5.0, 384),
+    }[quality]
+
+
+def needs_background_removal(image) -> bool:
+    """True when the image carries no usable alpha cut-out (RGB or fully opaque)."""
+    if image.mode != "RGBA":
+        return True
+    low, _high = image.getchannel("A").getextrema()
+    return low >= 250
+
+
+def prepare_image(args: argparse.Namespace, image_path: pathlib.Path, image_module):
+    """Return the pipeline image argument, removing the background when needed."""
+    if getattr(args, "no_rembg", False):
+        return str(image_path)
+    image = image_module.open(image_path)
+    if needs_background_removal(image):
+        from hy3dshape.rembg import BackgroundRemover
+
+        print("rembg: removing background")
+        return BackgroundRemover()(image.convert("RGB"))
+    print("rembg: input already has alpha, skipped")
+    return image.convert("RGBA")
+
+
+def postprocess_mesh(mesh):
+    """Drop small disconnected floaters and degenerate faces; keep the raw mesh on failure."""
+    try:
+        from hy3dshape import DegenerateFaceRemover, FloaterRemover
+
+        cleaned = DegenerateFaceRemover()(FloaterRemover()(mesh))
+        if cleaned is not None and len(cleaned.faces) > 0:
+            print(f"postprocess: faces {len(mesh.faces)} -> {len(cleaned.faces)}")
+            return cleaned
+    except Exception as exc:
+        print(f"warning: postprocess skipped: {exc}", file=sys.stderr)
+    return mesh
 
 
 def resolve_paths(args: argparse.Namespace) -> tuple[pathlib.Path, pathlib.Path]:
@@ -121,12 +172,22 @@ def run_inference(
     if args.device == "cuda":
         torch.cuda.manual_seed_all(args.seed)
 
-    image_arg = str(image_path)
-    if not args.no_rembg:
-        image_arg = image_module.open(image_path).convert("RGBA")
+    image_arg = prepare_image(args, image_path, image_module)
+    quality_guidance, quality_octree = sampling_for_quality(args.quality)
+    guidance = args.guidance_scale if getattr(args, "guidance_scale", None) is not None else quality_guidance
+    octree = args.octree_resolution if getattr(args, "octree_resolution", None) is not None else quality_octree
+    kwargs = {"guidance_scale": guidance, "octree_resolution": octree}
+    if getattr(args, "num_chunks", None):
+        kwargs["num_chunks"] = args.num_chunks
+    generator = torch.Generator(device="cpu").manual_seed(args.seed) if hasattr(torch, "Generator") else None
+    if generator is not None:
+        kwargs["generator"] = generator
+    print(f"sampling: guidance={guidance} octree={octree}")
 
     with torch.inference_mode():
-        mesh = pipeline(image=image_arg, num_inference_steps=steps)[0]
+        mesh = pipeline(image=image_arg, num_inference_steps=steps, **kwargs)[0]
+    if not getattr(args, "no_postprocess", True):
+        mesh = postprocess_mesh(mesh)
     partial_output_path.unlink(missing_ok=True)
     mesh.export(str(partial_output_path))
     if not partial_output_path.exists() or partial_output_path.stat().st_size == 0:
@@ -160,6 +221,9 @@ def main() -> int:
         "seed": args.seed,
         "low_vram": args.low_vram,
         "no_rembg": args.no_rembg,
+        "guidance_scale": getattr(args, "guidance_scale", None),
+        "octree_resolution": getattr(args, "octree_resolution", None),
+        "postprocess": not getattr(args, "no_postprocess", True),
         "dry_run": args.dry_run,
         "log": str(log_path),
     }
